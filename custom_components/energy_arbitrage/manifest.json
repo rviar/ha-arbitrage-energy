@@ -1,0 +1,11 @@
+{
+  "domain": "energy_arbitrage",
+  "name": "Energy Arbitrage",
+  "version": "1.0.0",
+  "documentation": "https://github.com/rviar/ha-energy-arbitrage",
+  "dependencies": [],
+  "codeowners": ["@rviar"],
+  "requirements": [],
+  "config_flow": true,
+  "iot_class": "local_polling"
+}

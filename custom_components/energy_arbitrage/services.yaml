@@ -1,0 +1,82 @@
+recalculate:
+  name: Recalculate Arbitrage
+  description: Force recalculation of arbitrage opportunities
+  fields: {}
+
+set_battery_reserve:
+  name: Set Battery Reserve
+  description: Change the minimum battery reserve level
+  fields:
+    reserve_percent:
+      name: Reserve Percentage
+      description: Minimum battery reserve level (0-100%)
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+
+manual_override:
+  name: Manual Override
+  description: Enable manual control for specified hours
+  fields:
+    hours:
+      name: Override Duration
+      description: Number of hours to disable automatic control
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 48
+          unit_of_measurement: "hours"
+
+clear_manual_override:
+  name: Clear Manual Override
+  description: Re-enable automatic arbitrage control
+  fields: {}
+
+force_work_mode:
+  name: Force Work Mode
+  description: Temporarily force a specific inverter work mode
+  fields:
+    work_mode:
+      name: Work Mode
+      description: Inverter work mode to activate
+      required: true
+      selector:
+        select:
+          options:
+            - "Export First"
+            - "Zero Export To Load"
+    duration_minutes:
+      name: Duration
+      description: How long to maintain this mode (minutes)
+      required: false
+      default: 60
+      selector:
+        number:
+          min: 5
+          max: 1440
+          unit_of_measurement: "minutes"
+
+force_grid_charging:
+  name: Force Grid Charging
+  description: Temporarily enable/disable grid charging
+  fields:
+    enable:
+      name: Enable Charging
+      description: Enable or disable grid charging
+      required: true
+      selector:
+        boolean:
+    duration_minutes:
+      name: Duration
+      description: How long to maintain this setting (minutes)
+      required: false
+      default: 60
+      selector:
+        number:
+          min: 5
+          max: 1440
+          unit_of_measurement: "minutes"
