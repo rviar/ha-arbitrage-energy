@@ -35,6 +35,7 @@ from .const import (
     CONF_MAX_DAILY_CYCLES,
     CONF_MIN_ARBITRAGE_DEPTH,
     CONF_DEGRADATION_FACTOR,
+    CONF_CURRENCY,
     DEFAULT_MAX_PV_POWER,
     DEFAULT_BATTERY_CAPACITY,
     DEFAULT_MIN_BATTERY_RESERVE,
@@ -50,6 +51,7 @@ from .const import (
     DEFAULT_MAX_DAILY_CYCLES,
     DEFAULT_MIN_ARBITRAGE_DEPTH,
     DEFAULT_DEGRADATION_FACTOR,
+    DEFAULT_CURRENCY,
 )
 
 DATA_SCHEMA_SENSORS = vol.Schema({
@@ -115,6 +117,9 @@ DATA_SCHEMA_DEGRADATION = vol.Schema({
     vol.Required(CONF_MAX_DAILY_CYCLES, default=DEFAULT_MAX_DAILY_CYCLES): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=10.0)),
     vol.Required(CONF_MIN_ARBITRAGE_DEPTH, default=DEFAULT_MIN_ARBITRAGE_DEPTH): vol.Range(min=20, max=80),
     vol.Required(CONF_DEGRADATION_FACTOR, default=DEFAULT_DEGRADATION_FACTOR): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=3.0)),
+    vol.Required(CONF_CURRENCY, default=DEFAULT_CURRENCY): selector.SelectSelector(
+        selector.SelectSelectorConfig(options=["PLN", "EUR", "USD", "CZK", "SEK"])
+    ),
 })
 
 class EnergyArbitrageConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):

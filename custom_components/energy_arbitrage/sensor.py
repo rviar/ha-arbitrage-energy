@@ -44,6 +44,14 @@ class EnergyArbitrageBaseSensor(CoordinatorEntity, SensorEntity):
         self._sensor_type = sensor_type
         self._attr_unique_id = f"{entry.entry_id}_{sensor_type}"
         self._attr_has_entity_name = True
+    
+    @property
+    def currency(self) -> str:
+        """Get the configured currency from the entry data."""
+        config = self._entry.data
+        options = self._entry.options
+        from .const import CONF_CURRENCY, DEFAULT_CURRENCY
+        return options.get(CONF_CURRENCY, config.get(CONF_CURRENCY, DEFAULT_CURRENCY))
 
     @property
     def device_info(self) -> dict:
@@ -115,8 +123,16 @@ class EnergyArbitrageProfitForecastSensor(EnergyArbitrageBaseSensor):
         self._attr_name = "Profit Forecast"
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = "EUR"
-        self._attr_icon = "mdi:currency-eur"
+        currency = self.currency
+        self._attr_native_unit_of_measurement = currency
+        currency_icons = {
+            "PLN": "mdi:currency-try",
+            "EUR": "mdi:currency-eur",
+            "USD": "mdi:currency-usd",
+            "CZK": "mdi:currency-try",
+            "SEK": "mdi:currency-try"
+        }
+        self._attr_icon = currency_icons.get(currency, "mdi:currency-eur")
 
     @property
     def native_value(self) -> float:
@@ -238,7 +254,8 @@ class EnergyArbitrageDegradationCostSensor(EnergyArbitrageBaseSensor):
         self._attr_name = "Battery Degradation Cost"
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = "EUR"
+        currency = self.currency
+        self._attr_native_unit_of_measurement = currency
         self._attr_icon = "mdi:battery-minus"
 
     @property
