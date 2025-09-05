@@ -189,23 +189,6 @@ def calculate_arbitrage_profit(
     
     return result
 
-def calculate_daily_cycle_impact(
-    operations: List[Dict[str, Any]], 
-    battery_capacity_kwh: float
-) -> Dict[str, float]:
-    total_energy_cycled = 0.0
-    total_equivalent_cycles = 0.0
-    
-    for op in operations:
-        energy = abs(op.get('energy_amount', 0))
-        total_energy_cycled += energy
-        total_equivalent_cycles += energy / battery_capacity_kwh
-    
-    return {
-        'total_energy_cycled': total_energy_cycled,
-        'total_equivalent_cycles': total_equivalent_cycles,
-        'average_depth': total_energy_cycled / (len(operations) * battery_capacity_kwh) if operations else 0
-    }
 
 def validate_config(config: Dict[str, Any]) -> List[str]:
     errors = []

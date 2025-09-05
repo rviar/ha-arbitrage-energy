@@ -5,8 +5,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from .utils import (
     safe_float, calculate_available_battery_capacity, 
     get_current_price_data, find_price_extremes,
-    calculate_arbitrage_profit, calculate_battery_charge_time,
-    calculate_daily_cycle_impact
+    calculate_arbitrage_profit, calculate_battery_charge_time
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -14,8 +13,6 @@ _LOGGER = logging.getLogger(__name__)
 class ArbitrageOptimizer:
     def __init__(self, coordinator):
         self.coordinator = coordinator
-        self._daily_operations = []
-        self._last_reset_day = None
 
     async def calculate_optimal_action(self, data: Dict[str, Any]) -> Dict[str, Any]:
         try:
@@ -316,9 +313,3 @@ class ArbitrageOptimizer:
             'remaining_cycles': max_daily_cycles - today_cycles
         }
 
-    def record_operation(self, action: str, energy_amount: float):
-        self._daily_operations.append({
-            'timestamp': datetime.now(),
-            'action': action,
-            'energy_amount': energy_amount
-        })
