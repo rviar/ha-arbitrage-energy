@@ -7,8 +7,7 @@ from typing import Any, Dict, Optional
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from homeassistant.helpers import mqtt
-from homeassistant.components.mqtt import async_publish, async_subscribe
+import homeassistant.components.mqtt as mqtt
 
 from .const import (
     DOMAIN,
@@ -82,10 +81,10 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
         sell_topic = self.config.get(CONF_MQTT_SELL_TOPIC, "energy/forecast/sell")
         
         try:
-            buy_unsub = await async_subscribe(
+            buy_unsub = await mqtt.async_subscribe(
                 self.hass, buy_topic, self._handle_buy_price_message
             )
-            sell_unsub = await async_subscribe(
+            sell_unsub = await mqtt.async_subscribe(
                 self.hass, sell_topic, self._handle_sell_price_message
             )
             
