@@ -441,7 +441,7 @@ class EnergyArbitrageTodayProfitSensor(EnergyArbitrageBaseSensor):
     def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "today_profit")
         self._attr_name = "Today Profit"
-        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        self._attr_state_class = SensorStateClass.TOTAL
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_icon = "mdi:currency-usd"
 
@@ -479,7 +479,7 @@ class EnergyArbitrageMonthlyProfitSensor(EnergyArbitrageBaseSensor):
     def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "monthly_profit")
         self._attr_name = "Monthly Profit"
-        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        self._attr_state_class = SensorStateClass.TOTAL
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_icon = "mdi:chart-line"
 
