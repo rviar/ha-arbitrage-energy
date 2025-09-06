@@ -1214,9 +1214,9 @@ class EnergyArbitrageAvailableBatteryCapacitySensor(EnergyArbitrageBaseSensor):
         battery_capacity = options.get(CONF_BATTERY_CAPACITY, config.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY))
         min_reserve = options.get(CONF_MIN_BATTERY_RESERVE, config.get(CONF_MIN_BATTERY_RESERVE, DEFAULT_MIN_BATTERY_RESERVE))
         
-        # Available capacity above minimum reserve
+        # Available capacity above minimum reserve in Wh
         available_percent = max(0, battery_level - min_reserve)
-        return round((available_percent / 100) * battery_capacity, 2)
+        return round((available_percent / 100) * battery_capacity * 1000, 2)  # Convert kWh to Wh
 
 
 class EnergyArbitrageNetConsumptionSensor(EnergyArbitrageBaseSensor):
