@@ -14,7 +14,7 @@ _LOGGER = logging.getLogger(__name__)
 class ArbitrageOptimizer:
     def __init__(self, coordinator):
         self.coordinator = coordinator
-        self.sensor_helper = SensorDataHelper(coordinator.hass, coordinator.entry.entry_id)
+        self.sensor_helper = SensorDataHelper(coordinator.hass, coordinator.entry.entry_id, coordinator)
 
     async def calculate_optimal_action(self, data: Dict[str, Any]) -> Dict[str, Any]:
         try:

@@ -12,10 +12,11 @@ _LOGGER = logging.getLogger(__name__)
 class SensorDataHelper:
     """Helper class to access sensor data for arbitrage calculations."""
     
-    def __init__(self, hass: HomeAssistant, entry_id: str):
+    def __init__(self, hass: HomeAssistant, entry_id: str, coordinator=None):
         self.hass = hass
         self.entry_id = entry_id
         self.domain = "energy_arbitrage"
+        self.coordinator = coordinator
     
     def _get_sensor_value(self, sensor_suffix: str) -> Optional[float]:
         """Get value from a sensor by its suffix."""
@@ -137,20 +138,28 @@ class SensorDataHelper:
     
     def get_battery_efficiency(self) -> float:
         """Get battery efficiency in % (returns as decimal 0-1) from coordinator data."""
-        value = self.coordinator.data.get("battery_efficiency", 90.0)
-        return value / 100.0
+        if self.coordinator and self.coordinator.data:
+            value = self.coordinator.data.get("battery_efficiency", 90.0)
+            return value / 100.0
+        return 0.9
     
     def get_min_battery_reserve(self) -> float:
         """Get minimum battery reserve in % from coordinator data."""
-        return self.coordinator.data.get("min_battery_reserve", 20.0)
+        if self.coordinator and self.coordinator.data:
+            return self.coordinator.data.get("min_battery_reserve", 20.0)
+        return 20.0
     
     def get_max_battery_power(self) -> float:
         """Get maximum battery power in W from coordinator data."""
-        return self.coordinator.data.get("max_battery_power", 5000.0)
+        if self.coordinator and self.coordinator.data:
+            return self.coordinator.data.get("max_battery_power", 5000.0)
+        return 5000.0
     
     def get_battery_capacity(self) -> float:
         """Get battery capacity in Wh from coordinator data."""
-        return self.coordinator.data.get("battery_capacity", 15000)
+        if self.coordinator and self.coordinator.data:
+            return self.coordinator.data.get("battery_capacity", 15000)
+        return 15000
     
     # Derived calculations
     
