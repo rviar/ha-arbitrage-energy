@@ -112,10 +112,10 @@ class EnergyArbitragePlanningHorizonNumber(EnergyArbitrageBaseNumber):
         self._attr_mode = NumberMode.BOX
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> int:
         config = self._entry.data
         options = self._entry.options
-        return float(options.get(self._config_key, config.get(self._config_key, DEFAULT_PLANNING_HORIZON)))
+        return int(options.get(self._config_key, config.get(self._config_key, DEFAULT_PLANNING_HORIZON)))
 
 
 class EnergyArbitrageMaxDailyCyclesNumber(EnergyArbitrageBaseNumber):
@@ -159,17 +159,17 @@ class EnergyArbitrageMinBatteryReserveNumber(EnergyArbitrageBaseNumber):
         super().__init__(coordinator, entry, CONF_MIN_BATTERY_RESERVE)
         self._attr_name = "Min Battery Reserve"
         self._attr_icon = "mdi:battery-lock"
-        self._attr_native_min_value = 10.0
-        self._attr_native_max_value = 100.0
-        self._attr_native_step = 1.0
+        self._attr_native_min_value = 10
+        self._attr_native_max_value = 100
+        self._attr_native_step = 1
         self._attr_native_unit_of_measurement = "%"
         self._attr_mode = NumberMode.BOX
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> int:
         config = self._entry.data
         options = self._entry.options
-        return options.get(self._config_key, config.get(self._config_key, DEFAULT_MIN_BATTERY_RESERVE))
+        return int(options.get(self._config_key, config.get(self._config_key, DEFAULT_MIN_BATTERY_RESERVE)))
 
 
 class EnergyArbitrageMaxBatteryPowerNumber(EnergyArbitrageBaseNumber):
@@ -178,17 +178,17 @@ class EnergyArbitrageMaxBatteryPowerNumber(EnergyArbitrageBaseNumber):
         self._attr_name = "Max Battery Power"
         self._attr_device_class = NumberDeviceClass.POWER
         self._attr_icon = "mdi:battery-charging-high"
-        self._attr_native_min_value = 1000.0
-        self._attr_native_max_value = 20000.0
-        self._attr_native_step = 100.0
+        self._attr_native_min_value = 1000
+        self._attr_native_max_value = 20000
+        self._attr_native_step = 100
         self._attr_native_unit_of_measurement = "W"
         self._attr_mode = NumberMode.BOX
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> int:
         config = self._entry.data
         options = self._entry.options
-        return options.get(self._config_key, config.get(self._config_key, DEFAULT_MAX_BATTERY_POWER))
+        return int(options.get(self._config_key, config.get(self._config_key, DEFAULT_MAX_BATTERY_POWER)))
 
 
 class EnergyArbitrageBatteryCapacityNumber(EnergyArbitrageBaseNumber):

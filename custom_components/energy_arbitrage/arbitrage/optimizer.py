@@ -63,7 +63,7 @@ class ArbitrageOptimizer:
         min_reserve = self.sensor_helper.get_min_battery_reserve()
         
         # Calculate battery power from grid power (approximation)
-        # Positive = charging, negative = discharging
+        # Negative = charging, positive = discharging
         battery_power = grid_power - surplus_power if surplus_power <= 0 else -surplus_power
         
         return {
@@ -77,8 +77,8 @@ class ArbitrageOptimizer:
             'available_battery_wh': available_battery_wh,
             'battery_capacity': battery_capacity,
             'min_reserve_percent': min_reserve,
-            'charging': battery_power > 0,
-            'discharging': battery_power < 0,
+            'charging': battery_power < 0,
+            'discharging': battery_power > 0,
         }
 
     def _find_arbitrage_opportunities_from_sensors(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
