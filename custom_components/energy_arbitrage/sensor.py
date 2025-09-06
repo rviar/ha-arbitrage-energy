@@ -29,7 +29,6 @@ async def async_setup_entry(
         EnergyArbitrageBatteryTargetSensor(coordinator, entry),
         EnergyArbitrageROISensor(coordinator, entry),
         EnergyArbitrageStatusSensor(coordinator, entry),
-        EnergyArbitrageDailyCyclesSensor(coordinator, entry),
         EnergyArbitrageTotalCyclesSensor(coordinator, entry),
         EnergyArbitrageDegradationCostSensor(coordinator, entry),
         EnergyArbitrageEquivalentCyclesSensor(coordinator, entry),
@@ -219,34 +218,6 @@ class EnergyArbitrageStatusSensor(EnergyArbitrageBaseSensor):
         
         return attrs
 
-class EnergyArbitrageDailyCyclesSensor(EnergyArbitrageBaseSensor):
-    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry, "daily_cycles")
-        self._attr_name = "Daily Battery Cycles"
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = "cycles"
-        self._attr_icon = "mdi:battery-sync"
-
-    @property
-    def native_value(self) -> float:
-        if not self.coordinator.data:
-            return 0.0
-        
-        decision = self.coordinator.data.get("decision", {})
-        return round(decision.get("daily_cycles", 0.0), 3)
-
-    @property
-    def extra_state_attributes(self) -> dict:
-        if not self.coordinator.data:
-            return {}
-        
-        decision = self.coordinator.data.get("decision", {})
-        return {
-            "remaining_cycles": decision.get("remaining_cycles", 0.0),
-            "max_daily_cycles": decision.get("max_cycles", 2.0),
-            "total_cycles": decision.get("total_cycles", 0.0),
-            "source": "inverter_sensor",
-        }
 
 class EnergyArbitrageDegradationCostSensor(EnergyArbitrageBaseSensor):
     def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:

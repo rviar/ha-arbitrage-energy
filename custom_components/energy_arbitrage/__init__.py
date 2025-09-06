@@ -25,6 +25,7 @@ SERVICE_MANUAL_OVERRIDE = "manual_override"
 SERVICE_CLEAR_MANUAL_OVERRIDE = "clear_manual_override"
 SERVICE_FORCE_WORK_MODE = "force_work_mode"
 SERVICE_FORCE_GRID_CHARGING = "force_grid_charging"
+SERVICE_HEALTH_CHECK = "health_check"
 
 SERVICE_RECALCULATE_SCHEMA = vol.Schema({})
 
@@ -47,6 +48,8 @@ SERVICE_FORCE_GRID_CHARGING_SCHEMA = vol.Schema({
     vol.Required("enable"): cv.boolean,
     vol.Optional("duration_minutes", default=60): vol.All(vol.Coerce(int), vol.Range(min=5, max=1440))
 })
+
+SERVICE_HEALTH_CHECK_SCHEMA = vol.Schema({})
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
@@ -91,6 +94,43 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.executor._set_grid_charging(enable)
         await coordinator.set_manual_override(duration / 60.0)
 
+    async def handle_health_check(call: ServiceCall):
+        """Perform a health check of the Energy Arbitrage system."""
+        status = {
+            "integration_loaded": True,
+            "coordinator_data": coordinator.data is not None,
+            "mqtt_connected": bool(coordinator._mqtt_unsubs),
+            "sensors_available": len([s for s in hass.states.async_all() if s.entity_id.startswith("sensor.energy_arbitrage_")]),
+            "last_update": coordinator.last_update_time.isoformat() if coordinator.last_update_time else None,
+        }
+        
+        # Check if sensors have data
+        if coordinator.data:
+            status.update({
+                "battery_level": coordinator.data.get("battery_level"),
+                "pv_power": coordinator.data.get("pv_power"),
+                "decision_action": coordinator.data.get("decision", {}).get("action"),
+                "price_data_available": bool(coordinator.data.get("price_data")),
+            })
+        
+        _LOGGER.info(f"Energy Arbitrage Health Check: {status}")
+        
+        # Send persistent notification
+        hass.components.persistent_notification.async_create(
+            f"🔋 **Energy Arbitrage Health Check**\n\n"
+            f"✅ Integration loaded: {status['integration_loaded']}\n"
+            f"📊 Coordinator data: {status['coordinator_data']}\n" 
+            f"📡 MQTT connected: {status['mqtt_connected']}\n"
+            f"🎛️ Sensors available: {status['sensors_available']}\n"
+            f"🔋 Battery level: {status.get('battery_level', 'N/A')}%\n"
+            f"☀️ PV power: {status.get('pv_power', 'N/A')} kW\n"
+            f"⚡ Current decision: {status.get('decision_action', 'N/A')}\n"
+            f"💰 Price data: {'Available' if status.get('price_data_available') else 'Missing'}\n"
+            f"🕐 Last update: {status.get('last_update', 'Never')}",
+            title="Energy Arbitrage Status",
+            notification_id="energy_arbitrage_health"
+        )
+
     hass.services.async_register(
         DOMAIN, SERVICE_RECALCULATE, handle_recalculate, SERVICE_RECALCULATE_SCHEMA
     )
@@ -109,6 +149,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(
         DOMAIN, SERVICE_FORCE_GRID_CHARGING, handle_force_grid_charging, SERVICE_FORCE_GRID_CHARGING_SCHEMA
     )
+    hass.services.async_register(
+        DOMAIN, SERVICE_HEALTH_CHECK, handle_health_check, SERVICE_HEALTH_CHECK_SCHEMA
+    )
     
     return True
 
@@ -123,5 +166,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_remove(DOMAIN, SERVICE_CLEAR_MANUAL_OVERRIDE)
         hass.services.async_remove(DOMAIN, SERVICE_FORCE_WORK_MODE)
         hass.services.async_remove(DOMAIN, SERVICE_FORCE_GRID_CHARGING)
+        hass.services.async_remove(DOMAIN, SERVICE_HEALTH_CHECK)
     
     return unload_ok
