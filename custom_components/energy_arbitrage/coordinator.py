@@ -11,7 +11,6 @@ import homeassistant.components.mqtt as mqtt
 
 from .const import (
     DOMAIN,
-    UPDATE_INTERVAL_SECONDS,
     CONF_PV_POWER_SENSOR,
     CONF_PV_FORECAST_TODAY_SENSOR,
     CONF_PV_FORECAST_TOMORROW_SENSOR,
@@ -58,7 +57,9 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=DOMAIN,
+            config_entry=entry,
             update_interval=update_interval,
+            always_update=False,  # Avoid unnecessary updates when data hasn't changed
         )
         
         self.optimizer = ArbitrageOptimizer(self)
@@ -122,26 +123,28 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> Dict[str, Any]:
         try:
-            data = await self._collect_sensor_data()
-            
-            if not self._enabled or self._emergency_mode:
-                decision = {"action": "hold", "reason": "Disabled or emergency mode"}
-            elif self._is_manual_override_active():
-                decision = {"action": "manual_override", "reason": "Manual override active"}
-            else:
-                decision = await self.optimizer.calculate_optimal_action(data)
-                if decision["action"] != "hold":
-                    await self.executor.execute_decision(decision)
-            
-            return {
-                **data,
-                "decision": decision,
-                "enabled": self._enabled,
-                "emergency_mode": self._emergency_mode,
-                "force_charge": self._force_charge,
-                "manual_override_until": self._manual_override_until,
-                "price_data_age": self._get_price_data_age(),
-            }
+            import asyncio
+            async with asyncio.timeout(30):  # 30 second timeout for safety
+                data = await self._collect_sensor_data()
+                
+                if not self._enabled or self._emergency_mode:
+                    decision = {"action": "hold", "reason": "Disabled or emergency mode"}
+                elif self._is_manual_override_active():
+                    decision = {"action": "manual_override", "reason": "Manual override active"}
+                else:
+                    decision = await self.optimizer.calculate_optimal_action(data)
+                    if decision["action"] != "hold":
+                        await self.executor.execute_decision(decision)
+                
+                return {
+                    **data,
+                    "decision": decision,
+                    "enabled": self._enabled,
+                    "emergency_mode": self._emergency_mode,
+                    "force_charge": self._force_charge,
+                    "manual_override_until": self._manual_override_until,
+                    "price_data_age": self._get_price_data_age(),
+                }
         except Exception as e:
             _LOGGER.error(f"Error updating data: {e}")
             raise UpdateFailed(f"Error fetching data: {e}")

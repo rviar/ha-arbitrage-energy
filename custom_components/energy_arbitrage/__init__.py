@@ -8,7 +8,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.const import Platform
 import homeassistant.helpers.config_validation as cv
 
-from .const import DOMAIN, UPDATE_INTERVAL_SECONDS, WORK_MODE_EXPORT_FIRST, WORK_MODE_ZERO_EXPORT
+from .const import DOMAIN, WORK_MODE_EXPORT_FIRST, WORK_MODE_ZERO_EXPORT
 from .coordinator import EnergyArbitrageCoordinator
 
 _LOGGER = logging.getLogger(__name__)

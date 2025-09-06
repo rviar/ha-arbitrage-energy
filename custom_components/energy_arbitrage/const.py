@@ -52,5 +52,3 @@ DEFAULT_CURRENCY = "PLN"
 
 WORK_MODE_EXPORT_FIRST = "Export First"
 WORK_MODE_ZERO_EXPORT = "Zero Export To Load"
-
-UPDATE_INTERVAL_SECONDS = 300  # 5 minutes fallback for responsive arbitrage
