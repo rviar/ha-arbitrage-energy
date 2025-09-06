@@ -105,37 +105,52 @@ class SensorDataHelper:
         """Get surplus power (PV - Load) in kW."""
         return self._get_sensor_value("surplus_power") or 0.0
     
-    # Configuration Parameter Sensors
+    # Configuration Parameter from Number Entities
+    
+    def _get_number_value(self, number_suffix: str) -> Optional[float]:
+        """Get value from a number entity by its suffix."""
+        entity_id = f"number.{self.domain}_{number_suffix}"
+        state = self.hass.states.get(entity_id)
+        
+        if state is None:
+            _LOGGER.warning(f"Number entity {entity_id} not found")
+            return None
+        
+        try:
+            return float(state.state)
+        except (ValueError, TypeError) as e:
+            _LOGGER.warning(f"Cannot convert number entity {entity_id} value '{state.state}' to float: {e}")
+            return None
     
     def get_min_arbitrage_margin(self) -> float:
         """Get minimum arbitrage margin in %."""
-        return self._get_sensor_value("config_min_arbitrage_margin") or 5.0
+        return self._get_number_value("min_arbitrage_margin") or 5.0
     
     def get_planning_horizon(self) -> int:
         """Get planning horizon in hours."""
-        value = self._get_sensor_value("config_planning_horizon")
+        value = self._get_number_value("planning_horizon")
         return int(value) if value is not None else 24
     
     def get_max_daily_cycles(self) -> float:
         """Get maximum daily battery cycles."""
-        return self._get_sensor_value("config_max_daily_cycles") or 2.0
+        return self._get_number_value("max_daily_cycles") or 2.0
     
     def get_battery_efficiency(self) -> float:
         """Get battery efficiency in % (returns as decimal 0-1)."""
-        value = self._get_sensor_value("config_battery_efficiency") or 90.0
+        value = self._get_number_value("battery_efficiency") or 90.0
         return value / 100.0
     
     def get_min_battery_reserve(self) -> float:
         """Get minimum battery reserve in %."""
-        return self._get_sensor_value("config_min_battery_reserve") or 20.0
+        return self._get_number_value("min_battery_reserve") or 20.0
     
     def get_max_battery_power(self) -> float:
         """Get maximum battery power in kW."""
-        return self._get_sensor_value("config_max_battery_power") or 5.0
+        return self._get_number_value("max_battery_power") or 5.0
     
     def get_battery_capacity(self) -> float:
         """Get battery capacity in kWh."""
-        return self._get_sensor_value("config_battery_capacity") or 15.0
+        return self._get_number_value("battery_capacity") or 15.0
     
     # Derived calculations
     

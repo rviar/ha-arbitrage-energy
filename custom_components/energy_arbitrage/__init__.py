@@ -17,6 +17,7 @@ PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.SWITCH,
     Platform.SELECT,
+    Platform.NUMBER,
 ]
 
 SERVICE_RECALCULATE = "recalculate"
