@@ -30,8 +30,8 @@ async def async_setup_entry(
         EnergyArbitrageROISensor(coordinator, entry),
         EnergyArbitrageStatusSensor(coordinator, entry),
         EnergyArbitrageTotalCyclesSensor(coordinator, entry),
+        EnergyArbitrageTodayBatteryCyclesSensor(coordinator, entry),
         EnergyArbitrageDegradationCostSensor(coordinator, entry),
-        EnergyArbitrageEquivalentCyclesSensor(coordinator, entry),
     ]
 
     async_add_entities(entities)
@@ -259,26 +259,6 @@ class EnergyArbitrageDegradationCostSensor(EnergyArbitrageBaseSensor):
         
         return {}
 
-class EnergyArbitrageEquivalentCyclesSensor(EnergyArbitrageBaseSensor):
-    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry, "equivalent_cycles")
-        self._attr_name = "Equivalent Battery Cycles"
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = "cycles"
-        self._attr_icon = "mdi:battery-arrow-down"
-
-    @property
-    def native_value(self) -> float:
-        if not self.coordinator.data:
-            return 0.0
-        
-        decision = self.coordinator.data.get("decision", {})
-        opportunity = decision.get("opportunity")
-        
-        if opportunity:
-            return round(opportunity.get("equivalent_cycles", 0.0), 4)
-        
-        return 0.0
 
 class EnergyArbitrageTotalCyclesSensor(EnergyArbitrageBaseSensor):
     def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
@@ -294,6 +274,22 @@ class EnergyArbitrageTotalCyclesSensor(EnergyArbitrageBaseSensor):
             return 0.0
         
         return self.coordinator.data.get("total_battery_cycles", 0.0)
+
+
+class EnergyArbitrageTodayBatteryCyclesSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "today_cycles")
+        self._attr_name = "Today Battery Cycles"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = "cycles"
+        self._attr_icon = "mdi:battery-arrow-up-down"
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data:
+            return 0.0
+        
+        return self.coordinator.data.get("today_battery_cycles", 0.0)
 
     @property
     def extra_state_attributes(self) -> dict:
