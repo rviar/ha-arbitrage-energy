@@ -126,7 +126,7 @@ class EnergyArbitrageMaxDailyCyclesNumber(EnergyArbitrageBaseNumber):
         self._attr_native_min_value = 0.5
         self._attr_native_max_value = 5.0
         self._attr_native_step = 0.1
-        self._attr_native_unit_of_measurement = "cyc"
+        self._attr_native_unit_of_measurement = "c"
         self._attr_mode = NumberMode.BOX
 
     @property
