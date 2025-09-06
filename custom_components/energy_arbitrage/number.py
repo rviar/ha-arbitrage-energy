@@ -197,10 +197,10 @@ class EnergyArbitrageBatteryCapacityNumber(EnergyArbitrageBaseNumber):
         self._attr_name = "Battery Capacity"
         self._attr_device_class = NumberDeviceClass.ENERGY
         self._attr_icon = "mdi:battery-outline"
-        self._attr_native_min_value = 5.0
-        self._attr_native_max_value = 100.0
-        self._attr_native_step = 0.1
-        self._attr_native_unit_of_measurement = "kWh"
+        self._attr_native_min_value = 5000.0
+        self._attr_native_max_value = 100000.0
+        self._attr_native_step = 100.0
+        self._attr_native_unit_of_measurement = "Wh"
         self._attr_mode = NumberMode.BOX
 
     @property

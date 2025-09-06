@@ -269,7 +269,7 @@ class ArbitrageOptimizer:
 
     def _get_battery_specs(self, config: Dict[str, Any], options: Dict[str, Any]) -> Dict[str, float]:
         return {
-            'capacity': config.get('battery_capacity', 15.0),
+            'capacity': options.get('battery_capacity', config.get('battery_capacity', 15000.0)),  # Capacity in Wh
             'cost': options.get('battery_cost', config.get('battery_cost', 7500)),
             'cycles': options.get('battery_cycles', config.get('battery_cycles', 6000)),
             'degradation_factor': options.get('degradation_factor', config.get('degradation_factor', 1.0))

@@ -569,14 +569,14 @@ class EnergyArbitrageChargeTimeRemainingSensor(EnergyArbitrageBaseSensor):
         if battery_level >= 100 or battery_power >= 0:
             return 0
         
-        # Вычисляем оставшуюся емкость до 100%
+        # Вычисляем оставшуюся емкость до 100% в Wh
         remaining_capacity = (100 - battery_level) / 100 * battery_capacity
         
         # Текущая мощность заряда (берем абсолютное значение отрицательной мощности)
         charge_power = abs(battery_power) if battery_power < 0 else 0
         
         if charge_power > 0:
-            # Время в часах = оставшаяся емкость / мощность заряда
+            # Время в часах = оставшаяся емкость (Wh) / мощность заряда (W)
             hours_remaining = remaining_capacity / charge_power
             # Конвертируем в минуты и округляем
             return round(hours_remaining * 60, 0)
@@ -623,13 +623,17 @@ class EnergyArbitrageDischargeTimeRemainingSensor(EnergyArbitrageBaseSensor):
         load_power = self.coordinator.data.get("load_power", 0)
         pv_power = self.coordinator.data.get("pv_power", 0)
         config = self.coordinator.data.get("config", {})
+        options = self.coordinator.data.get("options", {})
         
-        battery_capacity = config.get("battery_capacity", 15.0)
-        min_reserve = config.get("min_battery_reserve", 20)
+        # Получаем актуальную емкость и резерв из number entities
+        from .const import CONF_BATTERY_CAPACITY, CONF_MIN_BATTERY_RESERVE, DEFAULT_BATTERY_CAPACITY, DEFAULT_MIN_BATTERY_RESERVE
+        battery_capacity = options.get(CONF_BATTERY_CAPACITY, config.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY))
+        min_reserve = options.get(CONF_MIN_BATTERY_RESERVE, config.get(CONF_MIN_BATTERY_RESERVE, DEFAULT_MIN_BATTERY_RESERVE))
         
         if battery_level <= min_reserve:
             return 0
         
+        # Available capacity above minimum reserve in Wh
         available_capacity = (battery_level - min_reserve) / 100 * battery_capacity
         net_consumption = max(0, load_power - pv_power)
         
@@ -1219,7 +1223,7 @@ class EnergyArbitrageAvailableBatteryCapacitySensor(EnergyArbitrageBaseSensor):
         
         # Available capacity above minimum reserve in Wh
         available_percent = max(0, battery_level - min_reserve)
-        return round((available_percent / 100) * battery_capacity * 1000, 2)  # Convert kWh to Wh
+        return round((available_percent / 100) * battery_capacity, 2)  # Already in Wh
 
 
 class EnergyArbitrageNetConsumptionSensor(EnergyArbitrageBaseSensor):

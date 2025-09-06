@@ -149,8 +149,8 @@ class SensorDataHelper:
         return self._get_number_value("max_battery_power") or 5000.0
     
     def get_battery_capacity(self) -> float:
-        """Get battery capacity in Wh (converted from kWh config)."""
-        return (self._get_number_value("battery_capacity") or 15.0) * 1000.0
+        """Get battery capacity in Wh."""
+        return self._get_number_value("battery_capacity") or 15000.0
     
     # Derived calculations
     

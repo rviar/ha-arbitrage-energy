@@ -47,32 +47,32 @@ def parse_datetime(dt_string: str) -> Optional[datetime]:
     except (ValueError, TypeError):
         return None
 
-def calculate_battery_capacity_kwh(level_percent: float, total_capacity_kwh: float) -> float:
-    return (level_percent / 100.0) * total_capacity_kwh
+def calculate_battery_capacity_wh(level_percent: float, total_capacity_wh: float) -> float:
+    return (level_percent / 100.0) * total_capacity_wh
 
 def calculate_available_battery_capacity(
     current_level_percent: float, 
     min_reserve_percent: float, 
-    total_capacity_kwh: float
+    total_capacity_wh: float
 ) -> float:
     available_percent = max(0, current_level_percent - min_reserve_percent)
-    return (available_percent / 100.0) * total_capacity_kwh
+    return (available_percent / 100.0) * total_capacity_wh
 
 def calculate_battery_charge_time(
     target_level_percent: float,
     current_level_percent: float, 
-    total_capacity_kwh: float,
-    charge_power_kw: float
+    total_capacity_wh: float,
+    charge_power_w: float
 ) -> float:
-    if charge_power_kw <= 0:
+    if charge_power_w <= 0:
         return float('inf')
     
     needed_percent = target_level_percent - current_level_percent
     if needed_percent <= 0:
         return 0.0
     
-    needed_kwh = (needed_percent / 100.0) * total_capacity_kwh
-    return needed_kwh / charge_power_kw
+    needed_wh = (needed_percent / 100.0) * total_capacity_wh
+    return needed_wh / charge_power_w
 
 def get_current_price_data(price_data: List[Dict], current_time: datetime = None) -> Optional[Dict]:
     if not price_data:
@@ -123,13 +123,13 @@ def find_price_extremes(
     return []
 
 def calculate_battery_degradation_cost(
-    energy_amount_kwh: float,
-    battery_capacity_kwh: float,
+    energy_amount_wh: float,
+    battery_capacity_wh: float,
     battery_cost: float,
     rated_cycles: int,
     degradation_factor: float = 1.0
 ) -> Dict[str, float]:
-    depth_of_discharge = min(energy_amount_kwh / battery_capacity_kwh, 1.0)
+    depth_of_discharge = min(energy_amount_wh / battery_capacity_wh, 1.0)
     
     equivalent_cycles = depth_of_discharge * degradation_factor
     
@@ -147,22 +147,24 @@ def calculate_battery_degradation_cost(
 def calculate_arbitrage_profit(
     buy_price: float,
     sell_price: float, 
-    energy_amount_kwh: float,
+    energy_amount_wh: float,
     battery_efficiency: float = 0.9,
     battery_specs: Optional[Dict[str, float]] = None,
     include_degradation: bool = False
 ) -> Dict[str, float]:
+    # Convert Wh to kWh for price calculations (prices are per kWh)
+    energy_amount_kwh = energy_amount_wh / 1000.0
     gross_profit = (sell_price - buy_price) * energy_amount_kwh
-    efficiency_loss = energy_amount_kwh * (1 - battery_efficiency)
-    efficiency_cost = efficiency_loss * buy_price
+    efficiency_loss_kwh = energy_amount_kwh * (1 - battery_efficiency)
+    efficiency_cost = efficiency_loss_kwh * buy_price
     
     degradation_cost = 0.0
     degradation_info = {}
     
     if include_degradation and battery_specs:
         degradation_info = calculate_battery_degradation_cost(
-            energy_amount_kwh,
-            battery_specs.get('capacity', 15.0),
+            energy_amount_wh,
+            battery_specs.get('capacity', 15000.0),  # Default capacity in Wh
             battery_specs.get('cost', 7500),
             battery_specs.get('cycles', 6000),
             battery_specs.get('degradation_factor', 1.0)
