@@ -516,6 +516,7 @@ class EnergyArbitrageChargeTimeRemainingSensor(EnergyArbitrageBaseSensor):
         super().__init__(coordinator, entry, "charge_time_remaining")
         self._attr_name = "Charge Time Remaining"
         self._attr_device_class = SensorDeviceClass.DURATION
+        self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "min"
         self._attr_icon = "mdi:battery-charging"
 
@@ -564,6 +565,7 @@ class EnergyArbitrageDischargeTimeRemainingSensor(EnergyArbitrageBaseSensor):
         super().__init__(coordinator, entry, "discharge_time_remaining")
         self._attr_name = "Discharge Time Remaining"
         self._attr_device_class = SensorDeviceClass.DURATION
+        self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "min"
         self._attr_icon = "mdi:battery-arrow-down"
 

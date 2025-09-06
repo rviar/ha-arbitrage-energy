@@ -50,7 +50,9 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
         self.config = entry.data
         self.options = entry.options
         
-        update_interval = timedelta(seconds=UPDATE_INTERVAL_SECONDS)
+        # Use configured update interval or default
+        configured_interval = self.config.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
+        update_interval = timedelta(minutes=configured_interval)
         
         super().__init__(
             hass,
@@ -101,6 +103,8 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
             self.price_data["buy_prices"] = data
             self.price_data["last_updated"] = datetime.now()
             _LOGGER.debug(f"Received buy prices: {len(data)} entries")
+            # Trigger sensor update after receiving price data
+            self.async_set_updated_data(self.data)
         except Exception as e:
             _LOGGER.error(f"Error parsing buy price message: {e}")
 
@@ -111,6 +115,8 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
             self.price_data["sell_prices"] = data
             self.price_data["last_updated"] = datetime.now()
             _LOGGER.debug(f"Received sell prices: {len(data)} entries")
+            # Trigger sensor update after receiving price data
+            self.async_set_updated_data(self.data)
         except Exception as e:
             _LOGGER.error(f"Error parsing sell price message: {e}")
 
