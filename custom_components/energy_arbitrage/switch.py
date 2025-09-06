@@ -23,6 +23,7 @@ async def async_setup_entry(
     entities = [
         EnergyArbitrageEnabledSwitch(coordinator, entry),
         EnergyArbitrageEmergencyModeSwitch(coordinator, entry),
+        EnergyArbitrageForceChargeSwitch(coordinator, entry),
     ]
 
     async_add_entities(entities)
@@ -96,4 +97,38 @@ class EnergyArbitrageEmergencyModeSwitch(EnergyArbitrageBaseSwitch):
         return {
             "description": "Emergency mode preserves battery and disables arbitrage",
             "work_mode": "Zero Export To Load when active",
+        }
+
+
+class EnergyArbitrageForceChargeSwitch(EnergyArbitrageBaseSwitch):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "force_charge")
+        self._attr_name = "Force Charge"
+        self._attr_icon = "mdi:battery-charging-100"
+
+    @property
+    def is_on(self) -> bool:
+        if not self.coordinator.data:
+            return False
+        return self.coordinator.data.get("force_charge", False)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.set_force_charge(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.set_force_charge(False)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        if not self.coordinator.data:
+            return {}
+        
+        config = self.coordinator.data.get("config", {})
+        battery_level = self.coordinator.data.get("battery_level", 0)
+        
+        return {
+            "description": "Force charges battery to 100% regardless of price",
+            "current_battery_level": f"{battery_level:.1f}%",
+            "target_level": "100%",
+            "max_charge_power": f"{config.get('max_battery_power', 5.0)}kW"
         }

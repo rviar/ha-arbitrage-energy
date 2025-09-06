@@ -197,6 +197,18 @@ class ArbitrageExecutor:
             _LOGGER.error(f"Error entering emergency mode: {e}")
             return False
 
+    async def force_charge_battery(self) -> bool:
+        try:
+            await self._set_work_mode(WORK_MODE_ZERO_EXPORT)
+            await self._set_grid_charging(True)
+            
+            _LOGGER.info("Force charging battery to 100%")
+            return True
+            
+        except Exception as e:
+            _LOGGER.error(f"Error forcing battery charge: {e}")
+            return False
+
     def _can_execute_action(self) -> bool:
         if self._last_action_time is None:
             return True

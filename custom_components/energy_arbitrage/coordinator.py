@@ -71,6 +71,7 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
         self._mqtt_unsubs = []
         self._enabled = True
         self._emergency_mode = False
+        self._force_charge = False
         self._manual_override_until = None
 
     async def async_setup(self):
@@ -131,6 +132,7 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
                 "decision": decision,
                 "enabled": self._enabled,
                 "emergency_mode": self._emergency_mode,
+                "force_charge": self._force_charge,
                 "manual_override_until": self._manual_override_until,
                 "price_data_age": self._get_price_data_age(),
             }
@@ -201,6 +203,12 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
         self._emergency_mode = emergency
         if emergency:
             await self.executor.enter_emergency_mode()
+        await self.async_request_refresh()
+
+    async def set_force_charge(self, force_charge: bool):
+        self._force_charge = force_charge
+        if force_charge:
+            await self.executor.force_charge_battery()
         await self.async_request_refresh()
 
     async def set_manual_override(self, hours: int):
