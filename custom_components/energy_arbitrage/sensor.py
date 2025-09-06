@@ -940,16 +940,23 @@ class EnergyArbitrageMinBuyPrice24hSensor(EnergyArbitrageBaseSensor):
         if not buy_prices:
             return 0.0
         
-        config = self.coordinator.data.get('config', {})
         planning_horizon = self.coordinator.data.get('planning_horizon', 24)
         
-        from .arbitrage.utils import find_price_extremes
-        low_price_windows = find_price_extremes(buy_prices, planning_horizon, 'valleys')
+        # Filter prices within planning horizon and find minimum
+        from datetime import datetime, timezone, timedelta
+        from .arbitrage.utils import parse_datetime
         
-        if low_price_windows:
-            return round(low_price_windows[0].get('value', 0), 4)
+        current_time = datetime.now(timezone.utc)
+        cutoff_time = current_time + timedelta(hours=planning_horizon)
         
-        return 0.0
+        min_price = float('inf')
+        for entry in buy_prices:
+            start_time = parse_datetime(entry.get('start', ''))
+            if start_time and start_time <= cutoff_time:
+                price = entry.get('value', 0)
+                min_price = min(min_price, price)
+        
+        return round(min_price, 4) if min_price != float('inf') else 0.0
 
 
 class EnergyArbitrageMaxSellPrice24hSensor(EnergyArbitrageBaseSensor):
@@ -972,16 +979,23 @@ class EnergyArbitrageMaxSellPrice24hSensor(EnergyArbitrageBaseSensor):
         if not sell_prices:
             return 0.0
         
-        config = self.coordinator.data.get('config', {})
         planning_horizon = self.coordinator.data.get('planning_horizon', 24)
         
-        from .arbitrage.utils import find_price_extremes
-        high_price_windows = find_price_extremes(sell_prices, planning_horizon, 'peaks')
+        # Filter prices within planning horizon and find maximum
+        from datetime import datetime, timezone, timedelta
+        from .arbitrage.utils import parse_datetime
         
-        if high_price_windows:
-            return round(high_price_windows[0].get('value', 0), 4)
+        current_time = datetime.now(timezone.utc)
+        cutoff_time = current_time + timedelta(hours=planning_horizon)
         
-        return 0.0
+        max_price = 0.0
+        for entry in sell_prices:
+            start_time = parse_datetime(entry.get('start', ''))
+            if start_time and start_time <= cutoff_time:
+                price = entry.get('value', 0)
+                max_price = max(max_price, price)
+        
+        return round(max_price, 4)
 
 
 class EnergyArbitrageBatteryLevelSensor(EnergyArbitrageBaseSensor):
