@@ -101,10 +101,15 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
     @callback
     def _handle_buy_price_message(self, message):
         try:
+            _LOGGER.debug(f"Raw buy price message payload: {message.payload}")
             data = json.loads(message.payload)
+            _LOGGER.debug(f"Parsed buy price data type: {type(data)}, length: {len(data) if isinstance(data, list) else 'N/A'}")
+            if isinstance(data, list) and len(data) > 0:
+                _LOGGER.debug(f"First buy price entry: {data[0]}")
+            
             self.price_data["buy_prices"] = data
             self.price_data["last_updated"] = datetime.now()
-            _LOGGER.debug(f"Received buy prices: {len(data)} entries")
+            _LOGGER.debug(f"Stored buy prices: {len(data)} entries")
             # Trigger sensor update with fresh data
             self.hass.async_create_task(self.async_request_refresh())
         except Exception as e:
@@ -113,10 +118,15 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
     @callback
     def _handle_sell_price_message(self, message):
         try:
+            _LOGGER.debug(f"Raw sell price message payload: {message.payload}")
             data = json.loads(message.payload)
+            _LOGGER.debug(f"Parsed sell price data type: {type(data)}, length: {len(data) if isinstance(data, list) else 'N/A'}")
+            if isinstance(data, list) and len(data) > 0:
+                _LOGGER.debug(f"First sell price entry: {data[0]}")
+            
             self.price_data["sell_prices"] = data
             self.price_data["last_updated"] = datetime.now()
-            _LOGGER.debug(f"Received sell prices: {len(data)} entries")
+            _LOGGER.debug(f"Stored sell prices: {len(data)} entries")
             # Trigger sensor update with fresh data
             self.hass.async_create_task(self.async_request_refresh())
         except Exception as e:
