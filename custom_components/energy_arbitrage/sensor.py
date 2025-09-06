@@ -1058,7 +1058,7 @@ class EnergyArbitragePVForecastTodaySensor(EnergyArbitrageBaseSensor):
             return 0.0
         
         # Get the source entity directly - Solcast sensors already contain daily totals
-        pv_today_entity = self.coordinator.config.get(CONF_PV_FORECAST_TODAY)
+        pv_today_entity = self.coordinator.config.get('pv_forecast_today_sensor')
         if not pv_today_entity:
             _LOGGER.warning("PVForecastTodaySensor: No PV forecast today entity configured")
             return 0.0
@@ -1133,7 +1133,7 @@ class EnergyArbitragePVForecastTomorrowSensor(EnergyArbitrageBaseSensor):
             return 0.0
         
         # Get the source entity directly - Solcast sensors already contain daily totals
-        pv_tomorrow_entity = self.coordinator.config.get(CONF_PV_FORECAST_TOMORROW)
+        pv_tomorrow_entity = self.coordinator.config.get('pv_forecast_tomorrow_sensor')
         if not pv_tomorrow_entity:
             _LOGGER.warning("PVForecastTomorrowSensor: No PV forecast tomorrow entity configured")
             return 0.0
