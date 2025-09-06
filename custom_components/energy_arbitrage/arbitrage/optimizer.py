@@ -103,17 +103,32 @@ class ArbitrageOptimizer:
                 gross_profit = current_sell_price - current_buy_price
                 net_profit = gross_profit * battery_efficiency
                 
+                # Calculate detailed profit with degradation
+                battery_specs = self._get_battery_specs(
+                    self.sensor_helper.coordinator.data.get('config', {}),
+                    self.sensor_helper.coordinator.data.get('options', {})
+                )
+                include_degradation = self.sensor_helper.coordinator.data.get('options', {}).get('include_degradation', 
+                                    self.sensor_helper.coordinator.data.get('config', {}).get('include_degradation', True))
+                
+                # Assume 1kWh transaction for calculation
+                energy_amount_wh = 1000  # 1 kWh in Wh
+                profit_details = calculate_arbitrage_profit(
+                    current_buy_price, current_sell_price, energy_amount_wh,
+                    battery_efficiency, battery_specs, include_degradation
+                )
+                
                 opportunities.append({
                     'buy_price': current_buy_price,
                     'sell_price': current_sell_price,
                     'buy_time': datetime.now(timezone.utc).isoformat(),
                     'sell_time': datetime.now(timezone.utc).isoformat(),
-                    'roi_percent': roi,
-                    'net_profit_per_kwh': net_profit,
-                    'degradation_cost': 0.0,  # Simplified for now
-                    'cost_per_cycle': 0.0,
-                    'depth_of_discharge': 0.0,
-                    'equivalent_cycles': 0.0,
+                    'roi_percent': profit_details['roi_percent'],
+                    'net_profit_per_kwh': profit_details['net_profit'],
+                    'degradation_cost': profit_details['degradation_cost'],
+                    'cost_per_cycle': profit_details.get('cost_per_cycle', 0.0),
+                    'depth_of_discharge': profit_details.get('depth_of_discharge', 0.0),
+                    'equivalent_cycles': profit_details.get('equivalent_cycles', 0.0),
                     'is_immediate_buy': True,
                     'is_immediate_sell': True
                 })
@@ -123,8 +138,20 @@ class ArbitrageOptimizer:
             roi = self.sensor_helper.get_arbitrage_roi(min_buy_price_24h, max_sell_price_24h)
             
             if roi >= min_margin:
-                gross_profit = max_sell_price_24h - min_buy_price_24h
-                net_profit = gross_profit * battery_efficiency
+                # Calculate detailed profit with degradation for future opportunity
+                battery_specs = self._get_battery_specs(
+                    self.sensor_helper.coordinator.data.get('config', {}),
+                    self.sensor_helper.coordinator.data.get('options', {})
+                )
+                include_degradation = self.sensor_helper.coordinator.data.get('options', {}).get('include_degradation', 
+                                    self.sensor_helper.coordinator.data.get('config', {}).get('include_degradation', True))
+                
+                # Assume 1kWh transaction for calculation
+                energy_amount_wh = 1000  # 1 kWh in Wh
+                profit_details = calculate_arbitrage_profit(
+                    min_buy_price_24h, max_sell_price_24h, energy_amount_wh,
+                    battery_efficiency, battery_specs, include_degradation
+                )
                 
                 # Determine if we should buy or sell now
                 is_immediate_buy = abs(current_buy_price - min_buy_price_24h) < 0.001
@@ -135,12 +162,12 @@ class ArbitrageOptimizer:
                     'sell_price': max_sell_price_24h,
                     'buy_time': (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat(),  # Approximation
                     'sell_time': (datetime.now(timezone.utc) + timedelta(hours=18)).isoformat(),  # Approximation
-                    'roi_percent': roi,
-                    'net_profit_per_kwh': net_profit,
-                    'degradation_cost': 0.0,  # Simplified for now
-                    'cost_per_cycle': 0.0,
-                    'depth_of_discharge': 0.0,
-                    'equivalent_cycles': 0.0,
+                    'roi_percent': profit_details['roi_percent'],
+                    'net_profit_per_kwh': profit_details['net_profit'],
+                    'degradation_cost': profit_details['degradation_cost'],
+                    'cost_per_cycle': profit_details.get('cost_per_cycle', 0.0),
+                    'depth_of_discharge': profit_details.get('depth_of_discharge', 0.0),
+                    'equivalent_cycles': profit_details.get('equivalent_cycles', 0.0),
                     'is_immediate_buy': is_immediate_buy,
                     'is_immediate_sell': is_immediate_sell
                 })

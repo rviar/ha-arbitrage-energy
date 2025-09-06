@@ -7,6 +7,8 @@ import logging
 from typing import Any, Optional, Dict
 from homeassistant.core import HomeAssistant
 
+from .utils import calculate_arbitrage_profit
+
 _LOGGER = logging.getLogger(__name__)
 
 class SensorDataHelper:
@@ -183,16 +185,43 @@ class SensorDataHelper:
         return battery_level > min_reserve + 10.0  # 10% buffer above reserve
     
     def get_arbitrage_roi(self, buy_price: float, sell_price: float, kwh: float = 1.0) -> float:
-        """Calculate ROI for arbitrage opportunity."""
+        """Calculate ROI for arbitrage opportunity with degradation."""
         if buy_price <= 0:
             return 0.0
         
-        efficiency = self.get_battery_efficiency()
-        gross_profit = sell_price - buy_price
-        net_profit = gross_profit * efficiency * kwh
-        roi = (net_profit / (buy_price * kwh)) * 100
-        
-        return max(0.0, roi)
+        # Get battery specifications and degradation settings
+        if self.coordinator and self.coordinator.data:
+            coordinator_config = self.coordinator.data.get('config', {})
+            coordinator_options = self.coordinator.data.get('options', {})
+            
+            battery_specs = {
+                'capacity': self.get_battery_capacity(),
+                'cost': coordinator_options.get('battery_cost', coordinator_config.get('battery_cost', 7500)),
+                'cycles': coordinator_options.get('battery_cycles', coordinator_config.get('battery_cycles', 6000)),
+                'degradation_factor': coordinator_options.get('degradation_factor', coordinator_config.get('degradation_factor', 1.0))
+            }
+            
+            include_degradation = coordinator_options.get('include_degradation', 
+                                coordinator_config.get('include_degradation', True))
+            
+            energy_amount_wh = kwh * 1000  # Convert kWh to Wh
+            efficiency = self.get_battery_efficiency()
+            
+            # Use full profit calculation with degradation
+            profit_details = calculate_arbitrage_profit(
+                buy_price, sell_price, energy_amount_wh,
+                efficiency, battery_specs, include_degradation
+            )
+            
+            return max(0.0, profit_details['roi_percent'])
+        else:
+            # Fallback to simple calculation if coordinator data not available
+            efficiency = self.get_battery_efficiency()
+            gross_profit = sell_price - buy_price
+            net_profit = gross_profit * efficiency * kwh
+            roi = (net_profit / (buy_price * kwh)) * 100
+            
+            return max(0.0, roi)
     
     def get_current_state_summary(self) -> Dict[str, Any]:
         """Get summary of current system state from sensors."""
