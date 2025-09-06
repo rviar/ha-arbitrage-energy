@@ -559,8 +559,11 @@ class EnergyArbitrageChargeTimeRemainingSensor(EnergyArbitrageBaseSensor):
         battery_level = self.coordinator.data.get("battery_level", 0)
         battery_power = self.coordinator.data.get("battery_power", 0)
         config = self.coordinator.data.get("config", {})
+        options = self.coordinator.data.get("options", {})
         
-        battery_capacity = config.get("battery_capacity", 15.0)
+        # Получаем актуальную емкость из number entity
+        from .const import CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY
+        battery_capacity = options.get(CONF_BATTERY_CAPACITY, config.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY))
         
         # Если батарея уже заряжена до 100% или не заряжается (отрицательное значение - заряд)
         if battery_level >= 100 or battery_power >= 0:
