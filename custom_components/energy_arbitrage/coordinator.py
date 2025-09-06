@@ -208,14 +208,68 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
     def _get_forecast_data(self, entity_id: str) -> list:
         state = self.hass.states.get(entity_id)
         if not state:
+            _LOGGER.warning(f"PV forecast entity {entity_id} not found")
             return []
         
+        _LOGGER.info(f"=== DEBUGGING PV FORECAST {entity_id} ===")
+        _LOGGER.info(f"Entity state: {state.state}")
+        _LOGGER.info(f"Entity attributes keys: {list(state.attributes.keys())}")
+        
+        # Log full attributes for debugging (first 3 items only to avoid spam)
+        for i, (key, value) in enumerate(state.attributes.items()):
+            if i < 3:
+                if isinstance(value, list) and len(value) > 0:
+                    _LOGGER.info(f"Attribute '{key}': list with {len(value)} items, first item: {value[0]}")
+                else:
+                    _LOGGER.info(f"Attribute '{key}': {type(value).__name__} = {value}")
+        
         try:
-            if hasattr(state, 'attributes') and 'forecasts' in state.attributes:
-                return state.attributes['forecasts']
-            return []
+            # Check for different possible attribute names
+            forecast_data = None
+            found_attribute = None
+            
+            if 'forecasts' in state.attributes:
+                forecast_data = state.attributes['forecasts']
+                found_attribute = 'forecasts'
+            elif 'detailedForecast' in state.attributes:
+                forecast_data = state.attributes['detailedForecast']
+                found_attribute = 'detailedForecast'
+            elif 'forecast' in state.attributes:
+                forecast_data = state.attributes['forecast']
+                found_attribute = 'forecast'
+            else:
+                # Try to get numeric state value directly
+                try:
+                    numeric_value = float(state.state)
+                    _LOGGER.info(f"Using numeric state value: {numeric_value}")
+                    # Create a simple forecast entry
+                    forecast_data = [{'pv_estimate': numeric_value, 'period_end': 'unknown'}]
+                    found_attribute = 'numeric_state'
+                except (ValueError, TypeError):
+                    _LOGGER.warning(f"No recognized forecast attribute found in {entity_id}. Available: {list(state.attributes.keys())}")
+                    return []
+            
+            if forecast_data and len(forecast_data) > 0:
+                _LOGGER.info(f"Using attribute '{found_attribute}' with {len(forecast_data)} entries")
+                _LOGGER.info(f"First forecast entry: {forecast_data[0]}")
+                
+                # Log keys in first few forecast entries
+                if isinstance(forecast_data[0], dict):
+                    _LOGGER.info(f"Keys in first forecast entry: {list(forecast_data[0].keys())}")
+                    # Show first few entries with their values
+                    for i, entry in enumerate(forecast_data[:3]):
+                        if isinstance(entry, dict):
+                            _LOGGER.info(f"Forecast entry {i}: {entry}")
+                
+                return forecast_data
+            else:
+                _LOGGER.warning(f"Forecast data is empty for {entity_id}")
+                return []
+                
         except Exception as e:
-            _LOGGER.warning(f"Error getting forecast from {entity_id}: {e}")
+            _LOGGER.error(f"Error getting forecast from {entity_id}: {e}")
+            import traceback
+            _LOGGER.error(f"Traceback: {traceback.format_exc()}")
             return []
 
     def _get_price_data_age(self) -> Optional[int]:
