@@ -164,7 +164,7 @@ def calculate_arbitrage_profit(
     if include_degradation and battery_specs:
         degradation_info = calculate_battery_degradation_cost(
             energy_amount_wh,
-            battery_specs.get('capacity', 15000.0),  # Default capacity in Wh
+            battery_specs.get('capacity', 15000),  # Default capacity in Wh
             battery_specs.get('cost', 7500),
             battery_specs.get('cycles', 6000),
             battery_specs.get('degradation_factor', 1.0)

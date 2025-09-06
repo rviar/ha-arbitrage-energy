@@ -197,14 +197,14 @@ class EnergyArbitrageBatteryCapacityNumber(EnergyArbitrageBaseNumber):
         self._attr_name = "Battery Capacity"
         self._attr_device_class = NumberDeviceClass.ENERGY
         self._attr_icon = "mdi:battery-outline"
-        self._attr_native_min_value = 5000.0
-        self._attr_native_max_value = 100000.0
-        self._attr_native_step = 100.0
+        self._attr_native_min_value = 5000
+        self._attr_native_max_value = 100000
+        self._attr_native_step = 100
         self._attr_native_unit_of_measurement = "Wh"
         self._attr_mode = NumberMode.BOX
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> int:
         config = self._entry.data
         options = self._entry.options
-        return options.get(self._config_key, config.get(self._config_key, DEFAULT_BATTERY_CAPACITY))
+        return int(options.get(self._config_key, config.get(self._config_key, DEFAULT_BATTERY_CAPACITY)))
