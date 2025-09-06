@@ -355,7 +355,7 @@ class EnergyArbitrageNextBuyWindowSensor(EnergyArbitrageBaseSensor):
             return None
         
         config = self.coordinator.data.get('config', {})
-        planning_horizon = config.get('planning_horizon', 24)
+        planning_horizon = self.coordinator.data.get('planning_horizon', 24)
         
         from .arbitrage.utils import find_price_extremes
         low_price_windows = find_price_extremes(buy_prices, planning_horizon, 'valleys')
@@ -385,7 +385,7 @@ class EnergyArbitrageNextBuyWindowSensor(EnergyArbitrageBaseSensor):
             return {}
         
         config = self.coordinator.data.get('config', {})
-        planning_horizon = config.get('planning_horizon', 24)
+        planning_horizon = self.coordinator.data.get('planning_horizon', 24)
         
         from .arbitrage.utils import find_price_extremes
         low_price_windows = find_price_extremes(buy_prices, planning_horizon, 'valleys')
@@ -421,7 +421,7 @@ class EnergyArbitrageNextSellWindowSensor(EnergyArbitrageBaseSensor):
             return None
         
         config = self.coordinator.data.get('config', {})
-        planning_horizon = config.get('planning_horizon', 24)
+        planning_horizon = self.coordinator.data.get('planning_horizon', 24)
         
         from .arbitrage.utils import find_price_extremes
         high_price_windows = find_price_extremes(sell_prices, planning_horizon, 'peaks')
@@ -451,7 +451,7 @@ class EnergyArbitrageNextSellWindowSensor(EnergyArbitrageBaseSensor):
             return {}
         
         config = self.coordinator.data.get('config', {})
-        planning_horizon = config.get('planning_horizon', 24)
+        planning_horizon = self.coordinator.data.get('planning_horizon', 24)
         
         from .arbitrage.utils import find_price_extremes
         high_price_windows = find_price_extremes(sell_prices, planning_horizon, 'peaks')
@@ -600,7 +600,7 @@ class EnergyArbitrageChargeTimeRemainingSensor(EnergyArbitrageBaseSensor):
             "current_battery_power": battery_power,
             "actual_charge_power": actual_charge_power,
             "is_charging": battery_power < 0,
-            "max_charge_power": config.get("max_battery_power", 5000.0)
+            "max_charge_power": self.coordinator.data.get("max_battery_power", 5000.0)
         }
 
 
@@ -941,7 +941,7 @@ class EnergyArbitrageMinBuyPrice24hSensor(EnergyArbitrageBaseSensor):
             return 0.0
         
         config = self.coordinator.data.get('config', {})
-        planning_horizon = config.get('planning_horizon', 24)
+        planning_horizon = self.coordinator.data.get('planning_horizon', 24)
         
         from .arbitrage.utils import find_price_extremes
         low_price_windows = find_price_extremes(buy_prices, planning_horizon, 'valleys')
@@ -973,7 +973,7 @@ class EnergyArbitrageMaxSellPrice24hSensor(EnergyArbitrageBaseSensor):
             return 0.0
         
         config = self.coordinator.data.get('config', {})
-        planning_horizon = config.get('planning_horizon', 24)
+        planning_horizon = self.coordinator.data.get('planning_horizon', 24)
         
         from .arbitrage.utils import find_price_extremes
         high_price_windows = find_price_extremes(sell_prices, planning_horizon, 'peaks')

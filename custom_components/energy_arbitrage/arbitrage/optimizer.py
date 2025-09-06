@@ -268,11 +268,15 @@ class ArbitrageOptimizer:
             return False
 
     def _get_battery_specs(self, config: Dict[str, Any], options: Dict[str, Any]) -> Dict[str, float]:
+        # Get coordinator data for static config parameters
+        coordinator_config = self.sensor_helper.coordinator.data.get('config', {})
+        coordinator_options = self.sensor_helper.coordinator.data.get('options', {})
+        
         return {
             'capacity': self.sensor_helper.get_battery_capacity(),  # Get current capacity from coordinator via sensor_helper
-            'cost': options.get('battery_cost', config.get('battery_cost', 7500)),
-            'cycles': options.get('battery_cycles', config.get('battery_cycles', 6000)),
-            'degradation_factor': options.get('degradation_factor', config.get('degradation_factor', 1.0))
+            'cost': coordinator_options.get('battery_cost', coordinator_config.get('battery_cost', 7500)),
+            'cycles': coordinator_options.get('battery_cycles', coordinator_config.get('battery_cycles', 6000)),
+            'degradation_factor': coordinator_options.get('degradation_factor', coordinator_config.get('degradation_factor', 1.0))
         }
 
 
