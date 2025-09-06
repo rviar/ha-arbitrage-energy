@@ -561,9 +561,8 @@ class EnergyArbitrageChargeTimeRemainingSensor(EnergyArbitrageBaseSensor):
         config = self.coordinator.data.get("config", {})
         options = self.coordinator.data.get("options", {})
         
-        # Получаем актуальную емкость из number entity
-        from .const import CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY
-        battery_capacity = options.get(CONF_BATTERY_CAPACITY, config.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY))
+        # Get current battery capacity from coordinator
+        battery_capacity = self.coordinator.data.get("battery_capacity", 15000)
         
         # Если батарея уже заряжена до 100% или не заряжается (отрицательное значение - заряд)
         if battery_level >= 100 or battery_power >= 0:
@@ -625,10 +624,9 @@ class EnergyArbitrageDischargeTimeRemainingSensor(EnergyArbitrageBaseSensor):
         config = self.coordinator.data.get("config", {})
         options = self.coordinator.data.get("options", {})
         
-        # Получаем актуальную емкость и резерв из number entities
-        from .const import CONF_BATTERY_CAPACITY, CONF_MIN_BATTERY_RESERVE, DEFAULT_BATTERY_CAPACITY, DEFAULT_MIN_BATTERY_RESERVE
-        battery_capacity = options.get(CONF_BATTERY_CAPACITY, config.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY))
-        min_reserve = options.get(CONF_MIN_BATTERY_RESERVE, config.get(CONF_MIN_BATTERY_RESERVE, DEFAULT_MIN_BATTERY_RESERVE))
+        # Get current values from coordinator (not static config)
+        battery_capacity = self.coordinator.data.get("battery_capacity", 15000)
+        min_reserve = self.coordinator.data.get("min_battery_reserve", 20)
         
         if battery_level <= min_reserve:
             return 0
@@ -655,9 +653,8 @@ class EnergyArbitrageDischargeTimeRemainingSensor(EnergyArbitrageBaseSensor):
         config = self.coordinator.data.get("config", {})
         options = self.coordinator.data.get("options", {})
         
-        # Получаем актуальный резерв из number entity
-        from .const import CONF_MIN_BATTERY_RESERVE, DEFAULT_MIN_BATTERY_RESERVE
-        min_reserve = options.get(CONF_MIN_BATTERY_RESERVE, config.get(CONF_MIN_BATTERY_RESERVE, DEFAULT_MIN_BATTERY_RESERVE))
+        # Get current min reserve from coordinator
+        min_reserve = self.coordinator.data.get("min_battery_reserve", 20)
         
         return {
             "current_battery_level": f"{battery_level:.1f}%",
@@ -1220,17 +1217,15 @@ class EnergyArbitrageAvailableBatteryCapacitySensor(EnergyArbitrageBaseSensor):
             return 0.0
         
         battery_level = self.coordinator.data.get("battery_level", 0)
-        config = self.coordinator.data.get("config", {})
-        options = self.coordinator.data.get("options", {})
         
-        from .const import CONF_BATTERY_CAPACITY, CONF_MIN_BATTERY_RESERVE, DEFAULT_BATTERY_CAPACITY, DEFAULT_MIN_BATTERY_RESERVE
-        battery_capacity = options.get(CONF_BATTERY_CAPACITY, config.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY))
-        min_reserve = options.get(CONF_MIN_BATTERY_RESERVE, config.get(CONF_MIN_BATTERY_RESERVE, DEFAULT_MIN_BATTERY_RESERVE))
+        # Get current values from coordinator (not static config)
+        battery_capacity = self.coordinator.data.get("battery_capacity", 15000)
+        min_reserve = self.coordinator.data.get("min_battery_reserve", 20)
         
         # Available capacity above minimum reserve in Wh
         available_percent = max(0, battery_level - min_reserve)
         return round((available_percent / 100) * battery_capacity, 2)  # Already in Wh
-
+    
 
 class EnergyArbitrageNetConsumptionSensor(EnergyArbitrageBaseSensor):
     def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:

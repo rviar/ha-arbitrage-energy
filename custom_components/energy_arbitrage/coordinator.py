@@ -190,6 +190,26 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
             
             _LOGGER.debug(f"Battery cycles - Today: {today_state.state if today_state else 'None'} ({today_cycles_entity}), Total: {total_state.state if total_state else 'None'} ({total_cycles_entity})")
             
+            # Read current values from number entities (UI configurable parameters)
+            battery_capacity_entity = f"number.{DOMAIN}_battery_capacity"
+            min_reserve_entity = f"number.{DOMAIN}_min_battery_reserve"
+            max_power_entity = f"number.{DOMAIN}_max_battery_power"
+            planning_horizon_entity = f"number.{DOMAIN}_planning_horizon"
+            efficiency_entity = f"number.{DOMAIN}_battery_efficiency"
+            
+            battery_capacity_state = self.hass.states.get(battery_capacity_entity)
+            min_reserve_state = self.hass.states.get(min_reserve_entity)
+            max_power_state = self.hass.states.get(max_power_entity)
+            planning_horizon_state = self.hass.states.get(planning_horizon_entity)
+            efficiency_state = self.hass.states.get(efficiency_entity)
+            
+            # Use live values from number entities or fallback to config
+            data["battery_capacity"] = safe_float(battery_capacity_state) or self.options.get(CONF_BATTERY_CAPACITY, self.config.get(CONF_BATTERY_CAPACITY, 15000))
+            data["min_battery_reserve"] = safe_float(min_reserve_state) or self.options.get(CONF_MIN_BATTERY_RESERVE, self.config.get(CONF_MIN_BATTERY_RESERVE, 20.0))
+            data["max_battery_power"] = safe_float(max_power_state) or self.options.get(CONF_MAX_BATTERY_POWER, self.config.get(CONF_MAX_BATTERY_POWER, 5000.0))
+            data["planning_horizon"] = safe_int(planning_horizon_state) or self.options.get(CONF_PLANNING_HORIZON, self.config.get(CONF_PLANNING_HORIZON, 24))
+            data["battery_efficiency"] = safe_float(efficiency_state) or self.options.get(CONF_BATTERY_EFFICIENCY, self.config.get(CONF_BATTERY_EFFICIENCY, 90.0))
+            
             data["price_data"] = self.price_data.copy()
             data["config"] = self.config
             data["options"] = self.options

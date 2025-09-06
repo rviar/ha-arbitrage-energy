@@ -136,21 +136,21 @@ class SensorDataHelper:
         return self._get_number_value("max_daily_cycles") or 2.0
     
     def get_battery_efficiency(self) -> float:
-        """Get battery efficiency in % (returns as decimal 0-1)."""
-        value = self._get_number_value("battery_efficiency") or 90.0
+        """Get battery efficiency in % (returns as decimal 0-1) from coordinator data."""
+        value = self.coordinator.data.get("battery_efficiency", 90.0)
         return value / 100.0
     
     def get_min_battery_reserve(self) -> float:
-        """Get minimum battery reserve in %."""
-        return self._get_number_value("min_battery_reserve") or 20.0
+        """Get minimum battery reserve in % from coordinator data."""
+        return self.coordinator.data.get("min_battery_reserve", 20.0)
     
     def get_max_battery_power(self) -> float:
-        """Get maximum battery power in W."""
-        return self._get_number_value("max_battery_power") or 5000.0
+        """Get maximum battery power in W from coordinator data."""
+        return self.coordinator.data.get("max_battery_power", 5000.0)
     
     def get_battery_capacity(self) -> float:
-        """Get battery capacity in Wh."""
-        return self._get_number_value("battery_capacity") or 15000
+        """Get battery capacity in Wh from coordinator data."""
+        return self.coordinator.data.get("battery_capacity", 15000)
     
     # Derived calculations
     
