@@ -126,6 +126,10 @@ class ArbitrageOptimizer:
                         'sell_time': high_start,
                         'roi_percent': profit_calc['roi_percent'],
                         'net_profit_per_kwh': profit_calc['net_profit'],
+                        'degradation_cost': profit_calc['degradation_cost'],
+                        'cost_per_cycle': profit_calc.get('cost_per_cycle', 0.0),
+                        'depth_of_discharge': profit_calc.get('depth_of_discharge', 0.0),
+                        'equivalent_cycles': profit_calc.get('equivalent_cycles', 0.0),
                         'is_immediate_buy': self._is_current_time_window(low_start),
                         'is_immediate_sell': self._is_current_time_window(high_start)
                     })
@@ -147,6 +151,10 @@ class ArbitrageOptimizer:
                     'sell_time': current_sell_price_data.get('start', ''),
                     'roi_percent': immediate_profit['roi_percent'],
                     'net_profit_per_kwh': immediate_profit['net_profit'],
+                    'degradation_cost': immediate_profit['degradation_cost'],
+                    'cost_per_cycle': immediate_profit.get('cost_per_cycle', 0.0),
+                    'depth_of_discharge': immediate_profit.get('depth_of_discharge', 0.0),
+                    'equivalent_cycles': immediate_profit.get('equivalent_cycles', 0.0),
                     'is_immediate_buy': True,
                     'is_immediate_sell': True
                 })

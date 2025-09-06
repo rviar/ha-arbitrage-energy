@@ -530,17 +530,22 @@ class EnergyArbitrageChargeTimeRemainingSensor(EnergyArbitrageBaseSensor):
         config = self.coordinator.data.get("config", {})
         
         battery_capacity = config.get("battery_capacity", 15.0)
-        max_battery_power = config.get("max_battery_power", 5.0)
         
-        if battery_level >= 95 or battery_power <= 0:
+        # Если батарея уже заряжена до 100% или не заряжается (отрицательное значение - заряд)
+        if battery_level >= 100 or battery_power >= 0:
             return 0
         
-        remaining_capacity = (95 - battery_level) / 100 * battery_capacity
-        charge_power = min(max_battery_power, abs(battery_power) if battery_power > 0 else max_battery_power)
+        # Вычисляем оставшуюся емкость до 100%
+        remaining_capacity = (100 - battery_level) / 100 * battery_capacity
+        
+        # Текущая мощность заряда (берем абсолютное значение отрицательной мощности)
+        charge_power = abs(battery_power) if battery_power < 0 else 0
         
         if charge_power > 0:
+            # Время в часах = оставшаяся емкость / мощность заряда
             hours_remaining = remaining_capacity / charge_power
-            return round(hours_remaining * 60, 1)
+            # Конвертируем в минуты и округляем
+            return round(hours_remaining * 60, 0)
         
         return None
 
@@ -550,12 +555,18 @@ class EnergyArbitrageChargeTimeRemainingSensor(EnergyArbitrageBaseSensor):
             return {}
         
         battery_level = self.coordinator.data.get("battery_level", 0)
+        battery_power = self.coordinator.data.get("battery_power", 0)
         config = self.coordinator.data.get("config", {})
+        
+        # Мощность заряда (отрицательные значения)
+        actual_charge_power = abs(battery_power) if battery_power < 0 else 0
         
         return {
             "current_battery_level": f"{battery_level:.1f}%",
-            "target_level": "95%",
-            "charge_power": self.coordinator.data.get("battery_power", 0),
+            "target_level": "100%",
+            "current_battery_power": battery_power,
+            "actual_charge_power": actual_charge_power,
+            "is_charging": battery_power < 0,
             "max_charge_power": config.get("max_battery_power", 5.0)
         }
 
