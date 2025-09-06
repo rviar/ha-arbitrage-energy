@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Optional, Union, Dict, List
 
 _LOGGER = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ def find_price_extremes(
         return []
     
     current_time = datetime.now(timezone.utc)
-    cutoff_time = current_time.replace(hour=current_time.hour + hours_ahead)
+    cutoff_time = current_time + timedelta(hours=hours_ahead)
     
     filtered_data = []
     for entry in price_data:
