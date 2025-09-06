@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional, Tuple
 
+from .sensor_data_helper import SensorDataHelper
 from .utils import (
     safe_float, calculate_available_battery_capacity, 
     get_current_price_data, find_price_extremes,
@@ -13,13 +14,17 @@ _LOGGER = logging.getLogger(__name__)
 class ArbitrageOptimizer:
     def __init__(self, coordinator):
         self.coordinator = coordinator
+        self.sensor_helper = SensorDataHelper(coordinator.hass, coordinator.entry.entry_id)
 
     async def calculate_optimal_action(self, data: Dict[str, Any]) -> Dict[str, Any]:
         try:
-            current_state = self._analyze_current_state(data)
-            arbitrage_opportunities = self._find_arbitrage_opportunities(data)
+            # Log current state for debugging
+            self.sensor_helper.log_current_state()
             
-            decision = self._make_decision(current_state, arbitrage_opportunities, data)
+            current_state = self._analyze_current_state_from_sensors()
+            arbitrage_opportunities = self._find_arbitrage_opportunities_from_sensors(data)
+            
+            decision = self._make_decision_from_sensors(current_state, arbitrage_opportunities, data)
             
             _LOGGER.info(
                 f"Arbitrage decision: {decision['action']} - {decision['reason']}"
@@ -41,22 +46,25 @@ class ArbitrageOptimizer:
                 "next_opportunity": None
             }
 
-    def _analyze_current_state(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        config = data.get('config', {})
+    def _analyze_current_state_from_sensors(self) -> Dict[str, Any]:
+        """Analyze current state using only sensor data."""
+        battery_level = self.sensor_helper.get_battery_level()
+        pv_power = self.sensor_helper.get_pv_power()
+        load_power = self.sensor_helper.get_load_power()
+        grid_power = self.sensor_helper.get_grid_power()
         
-        pv_power = data.get('pv_power', 0)
-        load_power = data.get('load_power', 0)
-        battery_level = data.get('battery_level', 0)
-        battery_power = data.get('battery_power', 0)
-        grid_power = data.get('grid_power', 0)
+        # Get derived values from sensors
+        surplus_power = self.sensor_helper.get_surplus_power()
+        net_consumption = self.sensor_helper.get_net_consumption()
+        available_battery_kwh = self.sensor_helper.get_available_battery_capacity()
         
-        battery_capacity = config.get('battery_capacity', 15.0)
-        min_reserve = config.get('min_battery_reserve', 20)
+        # Get configuration from sensors
+        battery_capacity = self.sensor_helper.get_battery_capacity()
+        min_reserve = self.sensor_helper.get_min_battery_reserve()
         
-        surplus_power = pv_power - load_power
-        available_battery = calculate_available_battery_capacity(
-            battery_level, min_reserve, battery_capacity
-        )
+        # Calculate battery power from grid power (approximation)
+        # Positive = charging, negative = discharging
+        battery_power = grid_power - surplus_power if surplus_power <= 0 else -surplus_power
         
         return {
             'pv_power': pv_power,
@@ -65,128 +73,105 @@ class ArbitrageOptimizer:
             'battery_power': battery_power,
             'grid_power': grid_power,
             'surplus_power': surplus_power,
-            'available_battery_kwh': available_battery,
+            'net_consumption': net_consumption,
+            'available_battery_kwh': available_battery_kwh,
             'battery_capacity': battery_capacity,
             'min_reserve_percent': min_reserve,
             'charging': battery_power > 0,
             'discharging': battery_power < 0,
         }
 
-    def _find_arbitrage_opportunities(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        price_data = data.get('price_data', {})
-        buy_prices = price_data.get('buy_prices', [])
-        sell_prices = price_data.get('sell_prices', [])
+    def _find_arbitrage_opportunities_from_sensors(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Find arbitrage opportunities using sensor data."""
+        # Get current prices from sensors
+        current_buy_price = self.sensor_helper.get_current_buy_price()
+        current_sell_price = self.sensor_helper.get_current_sell_price()
+        min_buy_price_24h = self.sensor_helper.get_min_buy_price_24h()
+        max_sell_price_24h = self.sensor_helper.get_max_sell_price_24h()
         
-        if not buy_prices or not sell_prices:
-            return []
-        
-        config = data.get('config', {})
-        options = data.get('options', {})
-        
-        planning_horizon = config.get('planning_horizon', 24)
-        min_margin = options.get('min_arbitrage_margin', config.get('min_arbitrage_margin', 5))
-        battery_efficiency = config.get('battery_efficiency', 90) / 100.0
+        # Get configuration from sensors
+        min_margin = self.sensor_helper.get_min_arbitrage_margin()
+        battery_efficiency = self.sensor_helper.get_battery_efficiency()
         
         opportunities = []
         
-        current_time = datetime.now(timezone.utc)
-        current_buy_price_data = get_current_price_data(buy_prices, current_time)
-        current_sell_price_data = get_current_price_data(sell_prices, current_time)
-        
-        if not current_buy_price_data or not current_sell_price_data:
-            return []
-        
-        current_buy_price = current_buy_price_data.get('value', 0)
-        current_sell_price = current_sell_price_data.get('value', 0)
-        
-        high_price_windows = find_price_extremes(sell_prices, planning_horizon, 'peaks')
-        low_price_windows = find_price_extremes(buy_prices, planning_horizon, 'valleys')
-        
-        for high_window in high_price_windows:
-            high_price = high_window.get('value', 0)
-            high_start = high_window.get('start', '')
-            
-            for low_window in low_price_windows:
-                low_price = low_window.get('value', 0)
-                low_start = low_window.get('start', '')
-                
-                battery_specs = self._get_battery_specs(config, options)
-                include_degradation = options.get('include_degradation', config.get('include_degradation', True))
-                
-                profit_calc = calculate_arbitrage_profit(
-                    low_price, high_price, 1.0, battery_efficiency,
-                    battery_specs, include_degradation
-                )
-                
-                if profit_calc['roi_percent'] >= min_margin:
-                    opportunities.append({
-                        'buy_price': low_price,
-                        'sell_price': high_price,
-                        'buy_time': low_start,
-                        'sell_time': high_start,
-                        'roi_percent': profit_calc['roi_percent'],
-                        'net_profit_per_kwh': profit_calc['net_profit'],
-                        'degradation_cost': profit_calc['degradation_cost'],
-                        'cost_per_cycle': profit_calc.get('cost_per_cycle', 0.0),
-                        'depth_of_discharge': profit_calc.get('depth_of_discharge', 0.0),
-                        'equivalent_cycles': profit_calc.get('equivalent_cycles', 0.0),
-                        'is_immediate_buy': self._is_current_time_window(low_start),
-                        'is_immediate_sell': self._is_current_time_window(high_start)
-                    })
-        
+        # Check immediate arbitrage opportunity
         if current_sell_price > current_buy_price:
-            battery_specs = self._get_battery_specs(config, options)
-            include_degradation = options.get('include_degradation', config.get('include_degradation', True))
+            roi = self.sensor_helper.get_arbitrage_roi(current_buy_price, current_sell_price)
             
-            immediate_profit = calculate_arbitrage_profit(
-                current_buy_price, current_sell_price, 1.0, battery_efficiency,
-                battery_specs, include_degradation
-            )
-            
-            if immediate_profit['roi_percent'] >= min_margin:
+            if roi >= min_margin:
+                gross_profit = current_sell_price - current_buy_price
+                net_profit = gross_profit * battery_efficiency
+                
                 opportunities.append({
                     'buy_price': current_buy_price,
                     'sell_price': current_sell_price,
-                    'buy_time': current_buy_price_data.get('start', ''),
-                    'sell_time': current_sell_price_data.get('start', ''),
-                    'roi_percent': immediate_profit['roi_percent'],
-                    'net_profit_per_kwh': immediate_profit['net_profit'],
-                    'degradation_cost': immediate_profit['degradation_cost'],
-                    'cost_per_cycle': immediate_profit.get('cost_per_cycle', 0.0),
-                    'depth_of_discharge': immediate_profit.get('depth_of_discharge', 0.0),
-                    'equivalent_cycles': immediate_profit.get('equivalent_cycles', 0.0),
+                    'buy_time': datetime.now(timezone.utc).isoformat(),
+                    'sell_time': datetime.now(timezone.utc).isoformat(),
+                    'roi_percent': roi,
+                    'net_profit_per_kwh': net_profit,
+                    'degradation_cost': 0.0,  # Simplified for now
+                    'cost_per_cycle': 0.0,
+                    'depth_of_discharge': 0.0,
+                    'equivalent_cycles': 0.0,
                     'is_immediate_buy': True,
                     'is_immediate_sell': True
                 })
         
+        # Check future arbitrage opportunity (buy low, sell high)
+        if max_sell_price_24h > min_buy_price_24h:
+            roi = self.sensor_helper.get_arbitrage_roi(min_buy_price_24h, max_sell_price_24h)
+            
+            if roi >= min_margin:
+                gross_profit = max_sell_price_24h - min_buy_price_24h
+                net_profit = gross_profit * battery_efficiency
+                
+                # Determine if we should buy or sell now
+                is_immediate_buy = abs(current_buy_price - min_buy_price_24h) < 0.001
+                is_immediate_sell = abs(current_sell_price - max_sell_price_24h) < 0.001
+                
+                opportunities.append({
+                    'buy_price': min_buy_price_24h,
+                    'sell_price': max_sell_price_24h,
+                    'buy_time': (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat(),  # Approximation
+                    'sell_time': (datetime.now(timezone.utc) + timedelta(hours=18)).isoformat(),  # Approximation
+                    'roi_percent': roi,
+                    'net_profit_per_kwh': net_profit,
+                    'degradation_cost': 0.0,  # Simplified for now
+                    'cost_per_cycle': 0.0,
+                    'depth_of_discharge': 0.0,
+                    'equivalent_cycles': 0.0,
+                    'is_immediate_buy': is_immediate_buy,
+                    'is_immediate_sell': is_immediate_sell
+                })
+        
+        # Sort by ROI
         opportunities.sort(key=lambda x: x['roi_percent'], reverse=True)
         return opportunities
 
-    def _make_decision(
+
+    def _make_decision_from_sensors(
         self, 
         current_state: Dict[str, Any], 
         opportunities: List[Dict[str, Any]], 
         data: Dict[str, Any]
     ) -> Dict[str, Any]:
+        """Make arbitrage decisions using only sensor data."""
         
-        config = data.get('config', {})
-        options = data.get('options', {})
-        
-        max_battery_power = config.get('max_battery_power', 5.0)
-        self_consumption_priority = options.get(
-            'self_consumption_priority', 
-            config.get('self_consumption_priority', True)
-        )
+        # Get configuration from sensors
+        max_battery_power = self.sensor_helper.get_max_battery_power()
+        min_arbitrage_margin = self.sensor_helper.get_min_arbitrage_margin()
+        max_daily_cycles = self.sensor_helper.get_max_daily_cycles()
         
         battery_level = current_state['battery_level']
         surplus_power = current_state['surplus_power']
         available_battery = current_state['available_battery_kwh']
-        battery_capacity = current_state['battery_capacity']
         min_reserve = current_state['min_reserve_percent']
         
         best_opportunity = opportunities[0] if opportunities else None
         
-        cycle_limit_check = self._check_daily_cycle_limits(data, current_state)
+        # Check daily cycle limits using sensor data
+        cycle_limit_check = self._check_daily_cycle_limits_from_sensors(data, current_state)
         if cycle_limit_check['blocked']:
             return {
                 "action": "hold",
@@ -197,33 +182,37 @@ class ArbitrageOptimizer:
                 "daily_cycles": cycle_limit_check['daily_cycles']
             }
         
-        if best_opportunity and best_opportunity.get('is_immediate_sell') and available_battery > 0:
-            if battery_level > min_reserve + 10:
-                discharge_power = min(max_battery_power, available_battery * 2)
-                return {
-                    "action": "sell_arbitrage",
-                    "reason": f"Selling for arbitrage profit: {best_opportunity['roi_percent']:.1f}% ROI",
-                    "target_power": -discharge_power,
-                    "target_battery_level": min_reserve + 5,
-                    "profit_forecast": best_opportunity['net_profit_per_kwh'] * discharge_power,
-                    "opportunity": best_opportunity
-                }
+        # Priority 1: Immediate arbitrage sell if profitable and battery available
+        if (best_opportunity and best_opportunity.get('is_immediate_sell') and 
+            available_battery > 0 and self.sensor_helper.is_battery_discharging_viable()):
+            
+            discharge_power = min(max_battery_power, available_battery * 2)
+            return {
+                "action": "sell_arbitrage",
+                "reason": f"Selling for arbitrage profit: {best_opportunity['roi_percent']:.1f}% ROI",
+                "target_power": -discharge_power,
+                "target_battery_level": min_reserve + 5,
+                "profit_forecast": best_opportunity['net_profit_per_kwh'] * discharge_power,
+                "opportunity": best_opportunity
+            }
         
-        if best_opportunity and best_opportunity.get('is_immediate_buy'):
-            max_charge_level = 95.0
-            if battery_level < max_charge_level:
-                charge_power = min(max_battery_power, surplus_power if surplus_power > 0 else max_battery_power)
-                return {
-                    "action": "charge_arbitrage", 
-                    "reason": f"Charging for future arbitrage: {best_opportunity['roi_percent']:.1f}% ROI",
-                    "target_power": charge_power,
-                    "target_battery_level": max_charge_level,
-                    "profit_forecast": best_opportunity['net_profit_per_kwh'] * charge_power,
-                    "opportunity": best_opportunity
-                }
+        # Priority 2: Immediate arbitrage buy if profitable and battery has space
+        if (best_opportunity and best_opportunity.get('is_immediate_buy') and 
+            self.sensor_helper.is_battery_charging_viable()):
+            
+            charge_power = min(max_battery_power, surplus_power if surplus_power > 0 else max_battery_power)
+            return {
+                "action": "charge_arbitrage", 
+                "reason": f"Charging for future arbitrage: {best_opportunity['roi_percent']:.1f}% ROI",
+                "target_power": charge_power,
+                "target_battery_level": 95.0,
+                "profit_forecast": best_opportunity['net_profit_per_kwh'] * charge_power,
+                "opportunity": best_opportunity
+            }
         
+        # Priority 3: Store excess solar power
         if surplus_power > 0.1:
-            if self_consumption_priority and battery_level < 95:
+            if battery_level < 95:
                 charge_power = min(max_battery_power, surplus_power)
                 return {
                     "action": "charge_solar",
@@ -244,9 +233,10 @@ class ArbitrageOptimizer:
                     "opportunity": None
                 }
         
-        if surplus_power < -0.1 and available_battery > 0.5:
-            needed_power = abs(surplus_power)
-            discharge_power = min(max_battery_power, needed_power, available_battery * 2)
+        # Priority 4: Use battery to cover load deficit
+        net_consumption = current_state['net_consumption']
+        if net_consumption > 0.1 and available_battery > 0.5:
+            discharge_power = min(max_battery_power, net_consumption, available_battery * 2)
             return {
                 "action": "discharge_load",
                 "reason": "Using battery to cover load",
@@ -256,6 +246,7 @@ class ArbitrageOptimizer:
                 "opportunity": None
             }
         
+        # Default: Hold position
         return {
             "action": "hold",
             "reason": "No beneficial action identified",
@@ -284,26 +275,30 @@ class ArbitrageOptimizer:
             'degradation_factor': options.get('degradation_factor', config.get('degradation_factor', 1.0))
         }
 
-    def _check_daily_cycle_limits(self, data: Dict[str, Any], current_state: Dict[str, Any]) -> Dict[str, Any]:
-        config = data.get('config', {})
-        options = data.get('options', {})
+
+    def _check_daily_cycle_limits_from_sensors(self, data: Dict[str, Any], current_state: Dict[str, Any]) -> Dict[str, Any]:
+        """Check daily cycle limits using sensor data."""
         
-        max_daily_cycles = options.get('max_daily_cycles', config.get('max_daily_cycles', 2.0))
-        min_arbitrage_depth = options.get('min_arbitrage_depth', config.get('min_arbitrage_depth', 40))
+        # Get configuration from sensors  
+        max_daily_cycles = self.sensor_helper.get_max_daily_cycles()
         battery_level = current_state['battery_level']
         
+        # Get cycle data from coordinator data (these come from sensors)
         today_cycles = data.get('today_battery_cycles', 0.0)
         total_cycles = data.get('total_battery_cycles', 0.0)
         
+        # Check if daily cycle limit is reached
         if today_cycles >= max_daily_cycles:
             return {
                 'blocked': True,
-                'reason': f"Daily cycle limit reached: {today_cycles:.2f}/{max_daily_cycles} (from inverter)",
+                'reason': f"Daily cycle limit reached: {today_cycles:.2f}/{max_daily_cycles} (from sensor)",
                 'daily_cycles': today_cycles,
                 'max_cycles': max_daily_cycles,
                 'total_cycles': total_cycles
             }
         
+        # Check minimum depth for arbitrage (40% minimum battery level)
+        min_arbitrage_depth = 40.0  # Fixed at 40% for sensor-based logic
         if battery_level < min_arbitrage_depth:
             return {
                 'blocked': True,
@@ -315,7 +310,7 @@ class ArbitrageOptimizer:
         
         return {
             'blocked': False,
-            'reason': "Cycle limits OK",
+            'reason': "Cycle limits OK (sensor-based)",
             'daily_cycles': today_cycles,
             'total_cycles': total_cycles,
             'remaining_cycles': max_daily_cycles - today_cycles

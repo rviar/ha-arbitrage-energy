@@ -23,6 +23,7 @@ async def async_setup_entry(
     coordinator: EnergyArbitrageCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     entities = [
+        # Output/Decision sensors (existing)
         EnergyArbitrageNextActionSensor(coordinator, entry),
         EnergyArbitrageTargetPowerSensor(coordinator, entry),
         EnergyArbitrageProfitForecastSensor(coordinator, entry),
@@ -40,6 +41,30 @@ async def async_setup_entry(
         EnergyArbitragePriceSpreadSensor(coordinator, entry),
         EnergyArbitrageAveragePrice24hSensor(coordinator, entry),
         EnergyArbitrageDegradationCostSensor(coordinator, entry),
+        
+        # Input data sensors for arbitrage algorithm
+        EnergyArbitrageCurrentBuyPriceSensor(coordinator, entry),
+        EnergyArbitrageCurrentSellPriceSensor(coordinator, entry),
+        EnergyArbitrageMinBuyPrice24hSensor(coordinator, entry),
+        EnergyArbitrageMaxSellPrice24hSensor(coordinator, entry),
+        EnergyArbitrageBatteryLevelSensor(coordinator, entry),
+        EnergyArbitragePVPowerSensor(coordinator, entry),
+        EnergyArbitrageLoadPowerSensor(coordinator, entry),
+        EnergyArbitrageGridPowerSensor(coordinator, entry),
+        EnergyArbitragePVForecastTodaySensor(coordinator, entry),
+        EnergyArbitragePVForecastTomorrowSensor(coordinator, entry),
+        EnergyArbitrageAvailableBatteryCapacitySensor(coordinator, entry),
+        EnergyArbitrageNetConsumptionSensor(coordinator, entry),
+        EnergyArbitrageSurplusPowerSensor(coordinator, entry),
+        
+        # Configuration parameter sensors
+        EnergyArbitrageMinArbitrageMarginSensor(coordinator, entry),
+        EnergyArbitragePlanningHorizonSensor(coordinator, entry),
+        EnergyArbitrageMaxDailyCyclesSensor(coordinator, entry),
+        EnergyArbitrageBatteryEfficiencySensor(coordinator, entry),
+        EnergyArbitrageMinBatteryReserveSensor(coordinator, entry),
+        EnergyArbitrageMaxBatteryPowerSensor(coordinator, entry),
+        EnergyArbitrageBatteryCapacitySensor(coordinator, entry),
     ]
 
     async_add_entities(entities)
@@ -831,3 +856,440 @@ class EnergyArbitrageAveragePrice24hSensor(EnergyArbitrageBaseSensor):
             }
         
         return {}
+
+
+# Input Data Sensors for Arbitrage Algorithm
+
+class EnergyArbitrageCurrentBuyPriceSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "current_buy_price")
+        self._attr_name = "Current Buy Price"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        currency = self.currency
+        self._attr_native_unit_of_measurement = currency
+        self._attr_icon = "mdi:currency-eur-off"
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data:
+            return 0.0
+        
+        price_data = self.coordinator.data.get('price_data', {})
+        buy_prices = price_data.get('buy_prices', [])
+        
+        if not buy_prices:
+            return 0.0
+        
+        from datetime import datetime, timezone
+        from .arbitrage.utils import get_current_price_data
+        
+        current_time = datetime.now(timezone.utc)
+        current_buy = get_current_price_data(buy_prices, current_time)
+        
+        return round(current_buy.get('value', 0), 4) if current_buy else 0.0
+
+
+class EnergyArbitrageCurrentSellPriceSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "current_sell_price")
+        self._attr_name = "Current Sell Price"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        currency = self.currency
+        self._attr_native_unit_of_measurement = currency
+        self._attr_icon = "mdi:currency-eur"
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data:
+            return 0.0
+        
+        price_data = self.coordinator.data.get('price_data', {})
+        sell_prices = price_data.get('sell_prices', [])
+        
+        if not sell_prices:
+            return 0.0
+        
+        from datetime import datetime, timezone
+        from .arbitrage.utils import get_current_price_data
+        
+        current_time = datetime.now(timezone.utc)
+        current_sell = get_current_price_data(sell_prices, current_time)
+        
+        return round(current_sell.get('value', 0), 4) if current_sell else 0.0
+
+
+class EnergyArbitrageMinBuyPrice24hSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "min_buy_price_24h")
+        self._attr_name = "Min Buy Price 24h"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        currency = self.currency
+        self._attr_native_unit_of_measurement = currency
+        self._attr_icon = "mdi:trending-down"
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data:
+            return 0.0
+        
+        price_data = self.coordinator.data.get('price_data', {})
+        buy_prices = price_data.get('buy_prices', [])
+        
+        if not buy_prices:
+            return 0.0
+        
+        config = self.coordinator.data.get('config', {})
+        planning_horizon = config.get('planning_horizon', 24)
+        
+        from .arbitrage.utils import find_price_extremes
+        low_price_windows = find_price_extremes(buy_prices, planning_horizon, 'valleys')
+        
+        if low_price_windows:
+            return round(low_price_windows[0].get('value', 0), 4)
+        
+        return 0.0
+
+
+class EnergyArbitrageMaxSellPrice24hSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "max_sell_price_24h")
+        self._attr_name = "Max Sell Price 24h"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        currency = self.currency
+        self._attr_native_unit_of_measurement = currency
+        self._attr_icon = "mdi:trending-up"
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data:
+            return 0.0
+        
+        price_data = self.coordinator.data.get('price_data', {})
+        sell_prices = price_data.get('sell_prices', [])
+        
+        if not sell_prices:
+            return 0.0
+        
+        config = self.coordinator.data.get('config', {})
+        planning_horizon = config.get('planning_horizon', 24)
+        
+        from .arbitrage.utils import find_price_extremes
+        high_price_windows = find_price_extremes(sell_prices, planning_horizon, 'peaks')
+        
+        if high_price_windows:
+            return round(high_price_windows[0].get('value', 0), 4)
+        
+        return 0.0
+
+
+class EnergyArbitrageBatteryLevelSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "input_battery_level")
+        self._attr_name = "Input Battery Level"
+        self._attr_device_class = SensorDeviceClass.BATTERY
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_icon = "mdi:battery"
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data:
+            return 0.0
+        
+        return self.coordinator.data.get("battery_level", 0.0)
+
+
+class EnergyArbitragePVPowerSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "input_pv_power")
+        self._attr_name = "Input PV Power"
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+        self._attr_icon = "mdi:solar-panel-large"
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data:
+            return 0.0
+        
+        return self.coordinator.data.get("pv_power", 0.0)
+
+
+class EnergyArbitrageLoadPowerSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "input_load_power")
+        self._attr_name = "Input Load Power"
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+        self._attr_icon = "mdi:home-lightning-bolt"
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data:
+            return 0.0
+        
+        return self.coordinator.data.get("load_power", 0.0)
+
+
+class EnergyArbitrageGridPowerSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "input_grid_power")
+        self._attr_name = "Input Grid Power"
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+        self._attr_icon = "mdi:transmission-tower"
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data:
+            return 0.0
+        
+        return self.coordinator.data.get("grid_power", 0.0)
+
+
+class EnergyArbitragePVForecastTodaySensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "input_pv_forecast_today")
+        self._attr_name = "Input PV Forecast Today"
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_state_class = SensorStateClass.TOTAL
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        self._attr_icon = "mdi:weather-sunny"
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data:
+            return 0.0
+        
+        forecast = self.coordinator.data.get("pv_forecast_today", [])
+        return round(sum(entry.get('pv_estimate', 0) for entry in forecast), 2)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        if not self.coordinator.data:
+            return {}
+        
+        forecast = self.coordinator.data.get("pv_forecast_today", [])
+        return {
+            "forecast_points": len(forecast),
+            "peak_hour": max(forecast, key=lambda x: x.get('pv_estimate', 0), default={}).get('period_end', ''),
+            "peak_power": max(entry.get('pv_estimate', 0) for entry in forecast) if forecast else 0
+        }
+
+
+class EnergyArbitragePVForecastTomorrowSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "input_pv_forecast_tomorrow")
+        self._attr_name = "Input PV Forecast Tomorrow"
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_state_class = SensorStateClass.TOTAL
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        self._attr_icon = "mdi:weather-sunny-off"
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data:
+            return 0.0
+        
+        forecast = self.coordinator.data.get("pv_forecast_tomorrow", [])
+        return round(sum(entry.get('pv_estimate', 0) for entry in forecast), 2)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        if not self.coordinator.data:
+            return {}
+        
+        forecast = self.coordinator.data.get("pv_forecast_tomorrow", [])
+        return {
+            "forecast_points": len(forecast),
+            "peak_hour": max(forecast, key=lambda x: x.get('pv_estimate', 0), default={}).get('period_end', ''),
+            "peak_power": max(entry.get('pv_estimate', 0) for entry in forecast) if forecast else 0
+        }
+
+
+class EnergyArbitrageAvailableBatteryCapacitySensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "available_battery_capacity")
+        self._attr_name = "Available Battery Capacity"
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        self._attr_icon = "mdi:battery-check"
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data:
+            return 0.0
+        
+        battery_level = self.coordinator.data.get("battery_level", 0)
+        config = self.coordinator.data.get("config", {})
+        options = self.coordinator.data.get("options", {})
+        
+        from .const import CONF_BATTERY_CAPACITY, CONF_MIN_BATTERY_RESERVE, DEFAULT_BATTERY_CAPACITY, DEFAULT_MIN_BATTERY_RESERVE
+        battery_capacity = options.get(CONF_BATTERY_CAPACITY, config.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY))
+        min_reserve = options.get(CONF_MIN_BATTERY_RESERVE, config.get(CONF_MIN_BATTERY_RESERVE, DEFAULT_MIN_BATTERY_RESERVE))
+        
+        # Available capacity above minimum reserve
+        available_percent = max(0, battery_level - min_reserve)
+        return round((available_percent / 100) * battery_capacity, 2)
+
+
+class EnergyArbitrageNetConsumptionSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "net_consumption")
+        self._attr_name = "Net Consumption"
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+        self._attr_icon = "mdi:home-minus"
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data:
+            return 0.0
+        
+        load_power = self.coordinator.data.get("load_power", 0)
+        pv_power = self.coordinator.data.get("pv_power", 0)
+        
+        # Net consumption = Load - PV (positive means we need more power)
+        return round(max(0, load_power - pv_power), 2)
+
+
+class EnergyArbitrageSurplusPowerSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "surplus_power")
+        self._attr_name = "Surplus Power"
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+        self._attr_icon = "mdi:solar-power"
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data:
+            return 0.0
+        
+        load_power = self.coordinator.data.get("load_power", 0)
+        pv_power = self.coordinator.data.get("pv_power", 0)
+        
+        # Surplus = PV - Load (positive means we have excess PV)
+        return round(max(0, pv_power - load_power), 2)
+
+
+# Configuration Parameter Sensors
+
+class EnergyArbitrageMinArbitrageMarginSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "config_min_arbitrage_margin")
+        self._attr_name = "Config Min Arbitrage Margin"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_icon = "mdi:percent"
+
+    @property
+    def native_value(self) -> float:
+        config = self._entry.data
+        options = self._entry.options
+        from .const import CONF_MIN_ARBITRAGE_MARGIN, DEFAULT_MIN_ARBITRAGE_MARGIN
+        return options.get(CONF_MIN_ARBITRAGE_MARGIN, config.get(CONF_MIN_ARBITRAGE_MARGIN, DEFAULT_MIN_ARBITRAGE_MARGIN))
+
+
+class EnergyArbitragePlanningHorizonSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "config_planning_horizon")
+        self._attr_name = "Config Planning Horizon"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = "hours"
+        self._attr_icon = "mdi:clock-outline"
+
+    @property
+    def native_value(self) -> int:
+        config = self._entry.data
+        options = self._entry.options
+        from .const import CONF_PLANNING_HORIZON, DEFAULT_PLANNING_HORIZON
+        return options.get(CONF_PLANNING_HORIZON, config.get(CONF_PLANNING_HORIZON, DEFAULT_PLANNING_HORIZON))
+
+
+class EnergyArbitrageMaxDailyCyclesSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "config_max_daily_cycles")
+        self._attr_name = "Config Max Daily Cycles"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = "cycles"
+        self._attr_icon = "mdi:battery-sync"
+
+    @property
+    def native_value(self) -> float:
+        config = self._entry.data
+        options = self._entry.options
+        from .const import CONF_MAX_DAILY_CYCLES, DEFAULT_MAX_DAILY_CYCLES
+        return options.get(CONF_MAX_DAILY_CYCLES, config.get(CONF_MAX_DAILY_CYCLES, DEFAULT_MAX_DAILY_CYCLES))
+
+
+class EnergyArbitrageBatteryEfficiencySensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "config_battery_efficiency")
+        self._attr_name = "Config Battery Efficiency"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_icon = "mdi:battery-heart-variant"
+
+    @property
+    def native_value(self) -> float:
+        config = self._entry.data
+        options = self._entry.options
+        from .const import CONF_BATTERY_EFFICIENCY, DEFAULT_BATTERY_EFFICIENCY
+        return options.get(CONF_BATTERY_EFFICIENCY, config.get(CONF_BATTERY_EFFICIENCY, DEFAULT_BATTERY_EFFICIENCY))
+
+
+class EnergyArbitrageMinBatteryReserveSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "config_min_battery_reserve")
+        self._attr_name = "Config Min Battery Reserve"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_icon = "mdi:battery-lock"
+
+    @property
+    def native_value(self) -> float:
+        config = self._entry.data
+        options = self._entry.options
+        from .const import CONF_MIN_BATTERY_RESERVE, DEFAULT_MIN_BATTERY_RESERVE
+        return options.get(CONF_MIN_BATTERY_RESERVE, config.get(CONF_MIN_BATTERY_RESERVE, DEFAULT_MIN_BATTERY_RESERVE))
+
+
+class EnergyArbitrageMaxBatteryPowerSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "config_max_battery_power")
+        self._attr_name = "Config Max Battery Power"
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+        self._attr_icon = "mdi:battery-charging-high"
+
+    @property
+    def native_value(self) -> float:
+        config = self._entry.data
+        options = self._entry.options
+        from .const import CONF_MAX_BATTERY_POWER, DEFAULT_MAX_BATTERY_POWER
+        return options.get(CONF_MAX_BATTERY_POWER, config.get(CONF_MAX_BATTERY_POWER, DEFAULT_MAX_BATTERY_POWER))
+
+
+class EnergyArbitrageBatteryCapacitySensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "config_battery_capacity")
+        self._attr_name = "Config Battery Capacity"
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        self._attr_icon = "mdi:battery-outline"
+
+    @property
+    def native_value(self) -> float:
+        config = self._entry.data
+        options = self._entry.options
+        from .const import CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY
+        return options.get(CONF_BATTERY_CAPACITY, config.get(CONF_BATTERY_CAPACITY, DEFAULT_BATTERY_CAPACITY))
