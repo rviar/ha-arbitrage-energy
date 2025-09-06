@@ -129,7 +129,6 @@ class EnergyArbitrageProfitForecastSensor(EnergyArbitrageBaseSensor):
         super().__init__(coordinator, entry, "profit_forecast")
         self._attr_name = "Profit Forecast"
         self._attr_device_class = SensorDeviceClass.MONETARY
-        self._attr_state_class = SensorStateClass.MEASUREMENT
         currency = self.currency
         self._attr_native_unit_of_measurement = currency
         currency_icons = {
@@ -232,7 +231,6 @@ class EnergyArbitrageDegradationCostSensor(EnergyArbitrageBaseSensor):
         super().__init__(coordinator, entry, "degradation_cost")
         self._attr_name = "Battery Degradation Cost"
         self._attr_device_class = SensorDeviceClass.MONETARY
-        self._attr_state_class = SensorStateClass.MEASUREMENT
         currency = self.currency
         self._attr_native_unit_of_measurement = currency
         self._attr_icon = "mdi:battery-minus"
@@ -615,7 +613,6 @@ class EnergyArbitragePriceSpreadSensor(EnergyArbitrageBaseSensor):
     def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "price_spread")
         self._attr_name = "Price Spread"
-        self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_icon = "mdi:trending-up"
 
@@ -686,7 +683,6 @@ class EnergyArbitrageAveragePrice24hSensor(EnergyArbitrageBaseSensor):
     def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "average_price_24h")
         self._attr_name = "Average Price 24h"
-        self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_icon = "mdi:chart-areaspline"
 

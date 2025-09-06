@@ -159,8 +159,16 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
             charging_state = self.hass.states.get(self.config[CONF_BATTERY_GRID_CHARGING_SWITCH])
             data["grid_charging"] = charging_state.state == "on" if charging_state else False
             
-            data["today_battery_cycles"] = safe_float(self.hass.states.get(self.config.get(CONF_TODAY_BATTERY_CYCLES_SENSOR)))
-            data["total_battery_cycles"] = safe_float(self.hass.states.get(self.config.get(CONF_TOTAL_BATTERY_CYCLES_SENSOR)))
+            today_cycles_entity = self.config.get(CONF_TODAY_BATTERY_CYCLES_SENSOR)
+            total_cycles_entity = self.config.get(CONF_TOTAL_BATTERY_CYCLES_SENSOR)
+            
+            today_state = self.hass.states.get(today_cycles_entity)
+            total_state = self.hass.states.get(total_cycles_entity)
+            
+            data["today_battery_cycles"] = safe_float(today_state)
+            data["total_battery_cycles"] = safe_float(total_state)
+            
+            _LOGGER.debug(f"Battery cycles - Today: {today_state.state if today_state else 'None'} ({today_cycles_entity}), Total: {total_state.state if total_state else 'None'} ({total_cycles_entity})")
             
             data["price_data"] = self.price_data.copy()
             data["config"] = self.config
