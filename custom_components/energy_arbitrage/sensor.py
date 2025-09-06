@@ -696,6 +696,9 @@ class EnergyArbitrageAveragePrice24hSensor(EnergyArbitrageBaseSensor):
         sell_prices = price_data.get('sell_prices', [])
         
         if not buy_prices or not sell_prices:
+            import logging
+            _LOGGER = logging.getLogger(__name__)
+            _LOGGER.debug(f"Average Price 24h: No price data - buy_prices: {len(buy_prices)}, sell_prices: {len(sell_prices)}")
             return 0.0
         
         from datetime import datetime, timezone, timedelta
