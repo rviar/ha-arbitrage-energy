@@ -1057,38 +1057,25 @@ class EnergyArbitragePVForecastTodaySensor(EnergyArbitrageBaseSensor):
             _LOGGER.info("PVForecastTodaySensor: No coordinator data")
             return 0.0
         
-        forecast = self.coordinator.data.get("pv_forecast_today", [])
-        if not forecast:
-            _LOGGER.info("PVForecastTodaySensor: No pv_forecast_today in coordinator data")
+        # Get the source entity directly - Solcast sensors already contain daily totals
+        pv_today_entity = self.coordinator.config.get(CONF_PV_FORECAST_TODAY)
+        if not pv_today_entity:
+            _LOGGER.warning("PVForecastTodaySensor: No PV forecast today entity configured")
+            return 0.0
+            
+        state = self.coordinator.hass.states.get(pv_today_entity)
+        if not state:
+            _LOGGER.warning(f"PVForecastTodaySensor: Entity {pv_today_entity} not found")
             return 0.0
         
-        _LOGGER.info(f"PVForecastTodaySensor: Processing forecast with {len(forecast)} entries")
-        
-        # Try different possible field names for PV estimate
-        total = 0.0
-        for i, entry in enumerate(forecast):
-            entry_value = 0.0
-            if isinstance(entry, dict):
-                # Try various field names that might contain PV forecast values
-                for field_name in ['pv_estimate', 'pv_estimate_10', 'pv_estimate_90', 'forecast', 'value', 'power']:
-                    if field_name in entry and entry[field_name] is not None:
-                        entry_value = float(entry[field_name])
-                        _LOGGER.info(f"PVForecastTodaySensor: Entry {i}, found value {entry_value} in field '{field_name}'")
-                        break
-                
-                if entry_value == 0.0:
-                    _LOGGER.info(f"PVForecastTodaySensor: Entry {i}, no value found in dict keys: {list(entry.keys())}")
-                
-                total += entry_value
-            elif isinstance(entry, (int, float)):
-                entry_value = float(entry)
-                _LOGGER.info(f"PVForecastTodaySensor: Entry {i}, numeric value: {entry_value}")
-                total += entry_value
-            else:
-                _LOGGER.info(f"PVForecastTodaySensor: Entry {i}, unknown type: {type(entry)}")
-        
-        _LOGGER.info(f"PVForecastTodaySensor: Total calculated: {total}")
-        return round(total, 2)
+        try:
+            # Solcast forecast sensors already contain daily totals in their state
+            value = float(state.state)
+            _LOGGER.info(f"PVForecastTodaySensor: Using direct value from {pv_today_entity}: {value}")
+            return round(value, 2)
+        except (ValueError, TypeError) as e:
+            _LOGGER.error(f"PVForecastTodaySensor: Cannot convert state '{state.state}' to float: {e}")
+            return 0.0
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -1145,38 +1132,25 @@ class EnergyArbitragePVForecastTomorrowSensor(EnergyArbitrageBaseSensor):
             _LOGGER.info("PVForecastTomorrowSensor: No coordinator data")
             return 0.0
         
-        forecast = self.coordinator.data.get("pv_forecast_tomorrow", [])
-        if not forecast:
-            _LOGGER.info("PVForecastTomorrowSensor: No pv_forecast_tomorrow in coordinator data")
+        # Get the source entity directly - Solcast sensors already contain daily totals
+        pv_tomorrow_entity = self.coordinator.config.get(CONF_PV_FORECAST_TOMORROW)
+        if not pv_tomorrow_entity:
+            _LOGGER.warning("PVForecastTomorrowSensor: No PV forecast tomorrow entity configured")
+            return 0.0
+            
+        state = self.coordinator.hass.states.get(pv_tomorrow_entity)
+        if not state:
+            _LOGGER.warning(f"PVForecastTomorrowSensor: Entity {pv_tomorrow_entity} not found")
             return 0.0
         
-        _LOGGER.info(f"PVForecastTomorrowSensor: Processing forecast with {len(forecast)} entries")
-        
-        # Try different possible field names for PV estimate
-        total = 0.0
-        for i, entry in enumerate(forecast):
-            entry_value = 0.0
-            if isinstance(entry, dict):
-                # Try various field names that might contain PV forecast values
-                for field_name in ['pv_estimate', 'pv_estimate_10', 'pv_estimate_90', 'forecast', 'value', 'power']:
-                    if field_name in entry and entry[field_name] is not None:
-                        entry_value = float(entry[field_name])
-                        _LOGGER.info(f"PVForecastTomorrowSensor: Entry {i}, found value {entry_value} in field '{field_name}'")
-                        break
-                
-                if entry_value == 0.0:
-                    _LOGGER.info(f"PVForecastTomorrowSensor: Entry {i}, no value found in dict keys: {list(entry.keys())}")
-                
-                total += entry_value
-            elif isinstance(entry, (int, float)):
-                entry_value = float(entry)
-                _LOGGER.info(f"PVForecastTomorrowSensor: Entry {i}, numeric value: {entry_value}")
-                total += entry_value
-            else:
-                _LOGGER.info(f"PVForecastTomorrowSensor: Entry {i}, unknown type: {type(entry)}")
-        
-        _LOGGER.info(f"PVForecastTomorrowSensor: Total calculated: {total}")
-        return round(total, 2)
+        try:
+            # Solcast forecast sensors already contain daily totals in their state
+            value = float(state.state)
+            _LOGGER.info(f"PVForecastTomorrowSensor: Using direct value from {pv_tomorrow_entity}: {value}")
+            return round(value, 2)
+        except (ValueError, TypeError) as e:
+            _LOGGER.error(f"PVForecastTomorrowSensor: Cannot convert state '{state.state}' to float: {e}")
+            return 0.0
 
     @property
     def extra_state_attributes(self) -> dict:
