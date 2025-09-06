@@ -638,6 +638,7 @@ class EnergyArbitrageDischargeTimeRemainingSensor(EnergyArbitrageBaseSensor):
         net_consumption = max(0, load_power - pv_power)
         
         if net_consumption > 0:
+            # Calculation: Wh / W = hours
             hours_remaining = available_capacity / net_consumption
             return round(hours_remaining * 60, 1)
         
@@ -652,10 +653,15 @@ class EnergyArbitrageDischargeTimeRemainingSensor(EnergyArbitrageBaseSensor):
         load_power = self.coordinator.data.get("load_power", 0)
         pv_power = self.coordinator.data.get("pv_power", 0)
         config = self.coordinator.data.get("config", {})
+        options = self.coordinator.data.get("options", {})
+        
+        # Получаем актуальный резерв из number entity
+        from .const import CONF_MIN_BATTERY_RESERVE, DEFAULT_MIN_BATTERY_RESERVE
+        min_reserve = options.get(CONF_MIN_BATTERY_RESERVE, config.get(CONF_MIN_BATTERY_RESERVE, DEFAULT_MIN_BATTERY_RESERVE))
         
         return {
             "current_battery_level": f"{battery_level:.1f}%",
-            "min_reserve_level": f"{config.get('min_battery_reserve', 20)}%",
+            "min_reserve_level": f"{min_reserve}%",
             "load_power": f"{load_power:.0f}W",
             "pv_power": f"{pv_power:.0f}W",
             "net_consumption": f"{max(0, load_power - pv_power):.0f}W"

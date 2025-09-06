@@ -66,15 +66,15 @@ class SensorDataHelper:
         return self._get_sensor_value("input_battery_level") or 0.0
     
     def get_pv_power(self) -> float:
-        """Get current PV power in kW."""
+        """Get current PV power in W."""
         return self._get_sensor_value("input_pv_power") or 0.0
     
     def get_load_power(self) -> float:
-        """Get current load power in kW."""
+        """Get current load power in W."""
         return self._get_sensor_value("input_load_power") or 0.0
     
     def get_grid_power(self) -> float:
-        """Get current grid power in kW."""
+        """Get current grid power in W."""
         return self._get_sensor_value("input_grid_power") or 0.0
     
     def get_pv_forecast_today(self) -> float:
@@ -98,11 +98,11 @@ class SensorDataHelper:
         return self._get_sensor_value("available_battery_capacity") or 0.0
     
     def get_net_consumption(self) -> float:
-        """Get net consumption (Load - PV) in kW."""
+        """Get net consumption (Load - PV) in W."""
         return self._get_sensor_value("net_consumption") or 0.0
     
     def get_surplus_power(self) -> float:
-        """Get surplus power (PV - Load) in kW."""
+        """Get surplus power (PV - Load) in W."""
         return self._get_sensor_value("surplus_power") or 0.0
     
     # Configuration Parameter from Number Entities
