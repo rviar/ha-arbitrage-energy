@@ -55,7 +55,7 @@ class ArbitrageExecutor:
             await self._set_work_mode(WORK_MODE_EXPORT_FIRST)
             await self._set_grid_charging(False)
             
-            _LOGGER.info(f"Selling arbitrage: target power {decision.get('target_power', 0)}kW")
+            _LOGGER.info(f"Selling arbitrage: target power {decision.get('target_power', 0)}W")
             return True
             
         except Exception as e:
@@ -67,7 +67,7 @@ class ArbitrageExecutor:
             await self._set_work_mode(WORK_MODE_ZERO_EXPORT)
             await self._set_grid_charging(True)
             
-            _LOGGER.info(f"Charging for arbitrage: target power {decision.get('target_power', 0)}kW")
+            _LOGGER.info(f"Charging for arbitrage: target power {decision.get('target_power', 0)}W")
             return True
             
         except Exception as e:
@@ -79,7 +79,7 @@ class ArbitrageExecutor:
             await self._set_work_mode(WORK_MODE_ZERO_EXPORT)
             await self._set_grid_charging(False)
             
-            _LOGGER.info(f"Charging from solar: target power {decision.get('target_power', 0)}kW")
+            _LOGGER.info(f"Charging from solar: target power {decision.get('target_power', 0)}W")
             return True
             
         except Exception as e:
@@ -91,7 +91,7 @@ class ArbitrageExecutor:
             await self._set_work_mode(WORK_MODE_EXPORT_FIRST)
             await self._set_grid_charging(False)
             
-            _LOGGER.info(f"Exporting solar: target power {decision.get('target_power', 0)}kW")
+            _LOGGER.info(f"Exporting solar: target power {decision.get('target_power', 0)}W")
             return True
             
         except Exception as e:
@@ -103,7 +103,7 @@ class ArbitrageExecutor:
             await self._set_work_mode(WORK_MODE_ZERO_EXPORT)
             await self._set_grid_charging(False)
             
-            _LOGGER.info(f"Discharging for load: target power {decision.get('target_power', 0)}kW")
+            _LOGGER.info(f"Discharging for load: target power {decision.get('target_power', 0)}W")
             return True
             
         except Exception as e:

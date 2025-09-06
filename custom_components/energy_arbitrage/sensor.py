@@ -130,7 +130,7 @@ class EnergyArbitrageTargetPowerSensor(EnergyArbitrageBaseSensor):
         self._attr_name = "Target Power"
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_icon = "mdi:flash"
 
     @property
@@ -598,7 +598,7 @@ class EnergyArbitrageChargeTimeRemainingSensor(EnergyArbitrageBaseSensor):
             "current_battery_power": battery_power,
             "actual_charge_power": actual_charge_power,
             "is_charging": battery_power < 0,
-            "max_charge_power": config.get("max_battery_power", 5.0)
+            "max_charge_power": config.get("max_battery_power", 5000.0)
         }
 
 
@@ -649,9 +649,9 @@ class EnergyArbitrageDischargeTimeRemainingSensor(EnergyArbitrageBaseSensor):
         return {
             "current_battery_level": f"{battery_level:.1f}%",
             "min_reserve_level": f"{config.get('min_battery_reserve', 20)}%",
-            "load_power": f"{load_power:.1f}kW",
-            "pv_power": f"{pv_power:.1f}kW",
-            "net_consumption": f"{max(0, load_power - pv_power):.1f}kW"
+            "load_power": f"{load_power:.0f}W",
+            "pv_power": f"{pv_power:.0f}W",
+            "net_consumption": f"{max(0, load_power - pv_power):.0f}W"
         }
 
 
@@ -997,7 +997,7 @@ class EnergyArbitragePVPowerSensor(EnergyArbitrageBaseSensor):
         self._attr_name = "Input PV Power"
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_icon = "mdi:solar-panel-large"
 
     @property
@@ -1014,7 +1014,7 @@ class EnergyArbitrageLoadPowerSensor(EnergyArbitrageBaseSensor):
         self._attr_name = "Input Load Power"
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_icon = "mdi:home-lightning-bolt"
 
     @property
@@ -1031,7 +1031,7 @@ class EnergyArbitrageGridPowerSensor(EnergyArbitrageBaseSensor):
         self._attr_name = "Input Grid Power"
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_icon = "mdi:transmission-tower"
 
     @property
@@ -1048,7 +1048,7 @@ class EnergyArbitragePVForecastTodaySensor(EnergyArbitrageBaseSensor):
         self._attr_name = "Input PV Forecast Today"
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_state_class = SensorStateClass.TOTAL
-        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        self._attr_native_unit_of_measurement = UnitOfEnergy.WATT_HOUR
         self._attr_icon = "mdi:weather-sunny"
 
     @property
@@ -1069,9 +1069,9 @@ class EnergyArbitragePVForecastTodaySensor(EnergyArbitrageBaseSensor):
             return 0.0
         
         try:
-            # Solcast forecast sensors already contain daily totals in their state
-            value = float(state.state)
-            _LOGGER.info(f"PVForecastTodaySensor: Using direct value from {pv_today_entity}: {value}")
+            # Solcast forecast sensors contain daily totals in kWh, convert to Wh
+            value = float(state.state) * 1000.0  # Convert kWh to Wh
+            _LOGGER.info(f"PVForecastTodaySensor: Using direct value from {pv_today_entity}: {value} Wh (was {state.state} kWh)")
             return round(value, 2)
         except (ValueError, TypeError) as e:
             _LOGGER.error(f"PVForecastTodaySensor: Cannot convert state '{state.state}' to float: {e}")
@@ -1123,7 +1123,7 @@ class EnergyArbitragePVForecastTomorrowSensor(EnergyArbitrageBaseSensor):
         self._attr_name = "Input PV Forecast Tomorrow"
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_state_class = SensorStateClass.TOTAL
-        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        self._attr_native_unit_of_measurement = UnitOfEnergy.WATT_HOUR
         self._attr_icon = "mdi:weather-sunny-off"
 
     @property
@@ -1144,9 +1144,9 @@ class EnergyArbitragePVForecastTomorrowSensor(EnergyArbitrageBaseSensor):
             return 0.0
         
         try:
-            # Solcast forecast sensors already contain daily totals in their state
-            value = float(state.state)
-            _LOGGER.info(f"PVForecastTomorrowSensor: Using direct value from {pv_tomorrow_entity}: {value}")
+            # Solcast forecast sensors contain daily totals in kWh, convert to Wh
+            value = float(state.state) * 1000.0  # Convert kWh to Wh
+            _LOGGER.info(f"PVForecastTomorrowSensor: Using direct value from {pv_tomorrow_entity}: {value} Wh (was {state.state} kWh)")
             return round(value, 2)
         except (ValueError, TypeError) as e:
             _LOGGER.error(f"PVForecastTomorrowSensor: Cannot convert state '{state.state}' to float: {e}")
@@ -1198,7 +1198,7 @@ class EnergyArbitrageAvailableBatteryCapacitySensor(EnergyArbitrageBaseSensor):
         self._attr_name = "Available Battery Capacity"
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        self._attr_native_unit_of_measurement = UnitOfEnergy.WATT_HOUR
         self._attr_icon = "mdi:battery-check"
 
     @property
@@ -1225,7 +1225,7 @@ class EnergyArbitrageNetConsumptionSensor(EnergyArbitrageBaseSensor):
         self._attr_name = "Net Consumption"
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_icon = "mdi:home-minus"
 
     @property
@@ -1246,7 +1246,7 @@ class EnergyArbitrageSurplusPowerSensor(EnergyArbitrageBaseSensor):
         self._attr_name = "Surplus Power"
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_icon = "mdi:solar-power"
 
     @property

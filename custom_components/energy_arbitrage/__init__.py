@@ -124,7 +124,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             f"📡 MQTT connected: {status['mqtt_connected']}\n"
             f"🎛️ Sensors available: {status['sensors_available']}\n"
             f"🔋 Battery level: {status.get('battery_level', 'N/A')}%\n"
-            f"☀️ PV power: {status.get('pv_power', 'N/A')} kW\n"
+            f"☀️ PV power: {status.get('pv_power', 'N/A')} W\n"
             f"⚡ Current decision: {status.get('decision_action', 'N/A')}\n"
             f"💰 Price data: {'Available' if status.get('price_data_available') else 'Missing'}\n"
             f"🕐 Last update: {status.get('last_update', 'Never')}",

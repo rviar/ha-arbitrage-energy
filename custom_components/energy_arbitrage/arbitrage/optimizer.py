@@ -29,8 +29,8 @@ class ArbitrageOptimizer:
             _LOGGER.info(
                 f"Arbitrage decision: {decision['action']} - {decision['reason']}"
                 f" (Battery: {current_state['battery_level']:.1f}%, "
-                f"Solar: {current_state['pv_power']:.1f}kW, "
-                f"Load: {current_state['load_power']:.1f}kW)"
+                f"Solar: {current_state['pv_power']:.0f}W, "
+                f"Load: {current_state['load_power']:.0f}W)"
             )
             
             return decision
@@ -56,7 +56,7 @@ class ArbitrageOptimizer:
         # Get derived values from sensors
         surplus_power = self.sensor_helper.get_surplus_power()
         net_consumption = self.sensor_helper.get_net_consumption()
-        available_battery_kwh = self.sensor_helper.get_available_battery_capacity()
+        available_battery_wh = self.sensor_helper.get_available_battery_capacity()
         
         # Get configuration from sensors
         battery_capacity = self.sensor_helper.get_battery_capacity()
@@ -74,7 +74,7 @@ class ArbitrageOptimizer:
             'grid_power': grid_power,
             'surplus_power': surplus_power,
             'net_consumption': net_consumption,
-            'available_battery_kwh': available_battery_kwh,
+            'available_battery_wh': available_battery_wh,
             'battery_capacity': battery_capacity,
             'min_reserve_percent': min_reserve,
             'charging': battery_power > 0,
@@ -165,7 +165,7 @@ class ArbitrageOptimizer:
         
         battery_level = current_state['battery_level']
         surplus_power = current_state['surplus_power']
-        available_battery = current_state['available_battery_kwh']
+        available_battery = current_state['available_battery_wh']
         min_reserve = current_state['min_reserve_percent']
         
         best_opportunity = opportunities[0] if opportunities else None
@@ -186,13 +186,13 @@ class ArbitrageOptimizer:
         if (best_opportunity and best_opportunity.get('is_immediate_sell') and 
             available_battery > 0 and self.sensor_helper.is_battery_discharging_viable()):
             
-            discharge_power = min(max_battery_power, available_battery * 2)
+            discharge_power = min(max_battery_power, available_battery / 2)  # Wh / 2h = W for 2-hour discharge
             return {
                 "action": "sell_arbitrage",
                 "reason": f"Selling for arbitrage profit: {best_opportunity['roi_percent']:.1f}% ROI",
                 "target_power": -discharge_power,
                 "target_battery_level": min_reserve + 5,
-                "profit_forecast": best_opportunity['net_profit_per_kwh'] * discharge_power,
+                "profit_forecast": best_opportunity['net_profit_per_kwh'] * (discharge_power / 1000),  # Convert W to kW for profit calc
                 "opportunity": best_opportunity
             }
         
@@ -206,12 +206,12 @@ class ArbitrageOptimizer:
                 "reason": f"Charging for future arbitrage: {best_opportunity['roi_percent']:.1f}% ROI",
                 "target_power": charge_power,
                 "target_battery_level": 95.0,
-                "profit_forecast": best_opportunity['net_profit_per_kwh'] * charge_power,
+                "profit_forecast": best_opportunity['net_profit_per_kwh'] * (charge_power / 1000),  # Convert W to kW for profit calc
                 "opportunity": best_opportunity
             }
         
         # Priority 3: Store excess solar power
-        if surplus_power > 0.1:
+        if surplus_power > 100:  # 100W threshold
             if battery_level < 95:
                 charge_power = min(max_battery_power, surplus_power)
                 return {
@@ -235,8 +235,8 @@ class ArbitrageOptimizer:
         
         # Priority 4: Use battery to cover load deficit
         net_consumption = current_state['net_consumption']
-        if net_consumption > 0.1 and available_battery > 0.5:
-            discharge_power = min(max_battery_power, net_consumption, available_battery * 2)
+        if net_consumption > 100 and available_battery > 500:  # 100W and 500Wh thresholds
+            discharge_power = min(max_battery_power, net_consumption, available_battery / 2)  # Wh / 2h = W
             return {
                 "action": "discharge_load",
                 "reason": "Using battery to cover load",

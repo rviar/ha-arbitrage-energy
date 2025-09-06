@@ -130,5 +130,5 @@ class EnergyArbitrageForceChargeSwitch(EnergyArbitrageBaseSwitch):
             "description": "Force charges battery to 100% regardless of price",
             "current_battery_level": f"{battery_level:.1f}%",
             "target_level": "100%",
-            "max_charge_power": f"{config.get('max_battery_power', 5.0)}kW"
+            "max_charge_power": f"{config.get('max_battery_power', 5000.0)}W"
         }

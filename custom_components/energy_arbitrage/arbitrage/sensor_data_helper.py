@@ -78,7 +78,7 @@ class SensorDataHelper:
         return self._get_sensor_value("input_grid_power") or 0.0
     
     def get_pv_forecast_today(self) -> float:
-        """Get PV forecast for today in kWh."""
+        """Get PV forecast for today in Wh."""
         return self._get_sensor_value("input_pv_forecast_today") or 0.0
     
     def get_pv_forecast_today_details(self) -> Dict[str, Any]:
@@ -86,7 +86,7 @@ class SensorDataHelper:
         return self._get_sensor_attributes("input_pv_forecast_today")
     
     def get_pv_forecast_tomorrow(self) -> float:
-        """Get PV forecast for tomorrow in kWh."""
+        """Get PV forecast for tomorrow in Wh."""
         return self._get_sensor_value("input_pv_forecast_tomorrow") or 0.0
     
     def get_pv_forecast_tomorrow_details(self) -> Dict[str, Any]:
@@ -94,7 +94,7 @@ class SensorDataHelper:
         return self._get_sensor_attributes("input_pv_forecast_tomorrow")
     
     def get_available_battery_capacity(self) -> float:
-        """Get available battery capacity above reserve in kWh."""
+        """Get available battery capacity above reserve in Wh."""
         return self._get_sensor_value("available_battery_capacity") or 0.0
     
     def get_net_consumption(self) -> float:
@@ -145,12 +145,12 @@ class SensorDataHelper:
         return self._get_number_value("min_battery_reserve") or 20.0
     
     def get_max_battery_power(self) -> float:
-        """Get maximum battery power in kW."""
-        return self._get_number_value("max_battery_power") or 5.0
+        """Get maximum battery power in W."""
+        return self._get_number_value("max_battery_power") or 5000.0
     
     def get_battery_capacity(self) -> float:
-        """Get battery capacity in kWh."""
-        return self._get_number_value("battery_capacity") or 15.0
+        """Get battery capacity in Wh (converted from kWh config)."""
+        return (self._get_number_value("battery_capacity") or 15.0) * 1000.0
     
     # Derived calculations
     
@@ -225,8 +225,8 @@ class SensorDataHelper:
         
         _LOGGER.info(
             f"Current state: Battery {state['battery_level']:.1f}%, "
-            f"PV {state['pv_power']:.1f}kW, Load {state['load_power']:.1f}kW, "
-            f"Grid {state['grid_power']:.1f}kW"
+            f"PV {state['pv_power']:.0f}W, Load {state['load_power']:.0f}W, "
+            f"Grid {state['grid_power']:.0f}W"
         )
         
         _LOGGER.info(
@@ -237,6 +237,6 @@ class SensorDataHelper:
         
         _LOGGER.info(
             f"Config: Min margin {state['min_arbitrage_margin']:.1f}%, "
-            f"Battery {state['battery_capacity']:.1f}kWh @ {state['battery_efficiency']*100:.0f}%, "
+            f"Battery {state['battery_capacity']:.0f}Wh @ {state['battery_efficiency']*100:.0f}%, "
             f"Reserve {state['min_battery_reserve']:.0f}%"
         )

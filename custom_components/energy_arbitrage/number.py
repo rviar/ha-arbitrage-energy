@@ -88,7 +88,7 @@ class EnergyArbitrageMinArbitrageMarginNumber(EnergyArbitrageBaseNumber):
         self._attr_name = "Min Arbitrage Margin"
         self._attr_icon = "mdi:percent"
         self._attr_native_min_value = 1.0
-        self._attr_native_max_value = 20.0
+        self._attr_native_max_value = 100.0
         self._attr_native_step = 0.5
         self._attr_native_unit_of_measurement = "%"
         self._attr_mode = NumberMode.BOX
@@ -108,7 +108,7 @@ class EnergyArbitragePlanningHorizonNumber(EnergyArbitrageBaseNumber):
         self._attr_native_min_value = 12
         self._attr_native_max_value = 48
         self._attr_native_step = 1
-        self._attr_native_unit_of_measurement = "hours"
+        self._attr_native_unit_of_measurement = "h"
         self._attr_mode = NumberMode.BOX
 
     @property
@@ -126,7 +126,7 @@ class EnergyArbitrageMaxDailyCyclesNumber(EnergyArbitrageBaseNumber):
         self._attr_native_min_value = 0.5
         self._attr_native_max_value = 5.0
         self._attr_native_step = 0.1
-        self._attr_native_unit_of_measurement = "cycles"
+        self._attr_native_unit_of_measurement = "cyc"
         self._attr_mode = NumberMode.BOX
 
     @property
@@ -160,7 +160,7 @@ class EnergyArbitrageMinBatteryReserveNumber(EnergyArbitrageBaseNumber):
         self._attr_name = "Min Battery Reserve"
         self._attr_icon = "mdi:battery-lock"
         self._attr_native_min_value = 10.0
-        self._attr_native_max_value = 50.0
+        self._attr_native_max_value = 100.0
         self._attr_native_step = 1.0
         self._attr_native_unit_of_measurement = "%"
         self._attr_mode = NumberMode.BOX
@@ -178,10 +178,10 @@ class EnergyArbitrageMaxBatteryPowerNumber(EnergyArbitrageBaseNumber):
         self._attr_name = "Max Battery Power"
         self._attr_device_class = NumberDeviceClass.POWER
         self._attr_icon = "mdi:battery-charging-high"
-        self._attr_native_min_value = 1.0
-        self._attr_native_max_value = 20.0
-        self._attr_native_step = 0.1
-        self._attr_native_unit_of_measurement = "kW"
+        self._attr_native_min_value = 1000.0
+        self._attr_native_max_value = 20000.0
+        self._attr_native_step = 100.0
+        self._attr_native_unit_of_measurement = "W"
         self._attr_mode = NumberMode.BOX
 
     @property
