@@ -703,10 +703,12 @@ class EnergyArbitrageAveragePrice24hSensor(EnergyArbitrageBaseSensor):
         buy_prices = price_data.get('buy_prices', [])
         sell_prices = price_data.get('sell_prices', [])
         
-        if not buy_prices or not sell_prices:
-            import logging
-            _LOGGER = logging.getLogger(__name__)
-            _LOGGER.debug(f"Average Price 24h: No price data - buy_prices: {len(buy_prices)}, sell_prices: {len(sell_prices)}")
+        import logging
+        _LOGGER = logging.getLogger(__name__)
+        _LOGGER.debug(f"Average Price 24h: Checking price data - buy_prices: {len(buy_prices)}, sell_prices: {len(sell_prices)}")
+        
+        if not buy_prices and not sell_prices:
+            _LOGGER.debug("Average Price 24h: No price data available")
             return 0.0
         
         from datetime import datetime, timezone, timedelta
@@ -736,8 +738,10 @@ class EnergyArbitrageAveragePrice24hSensor(EnergyArbitrageBaseSensor):
         all_prices = recent_buy_prices + recent_sell_prices
         if all_prices:
             average = sum(all_prices) / len(all_prices)
+            _LOGGER.debug(f"Average Price 24h: Calculated average {average} from {len(all_prices)} price points")
             return round(average, 4)
         
+        _LOGGER.debug("Average Price 24h: No recent price data found within 24h window")
         return 0.0
 
     @property

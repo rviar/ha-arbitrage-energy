@@ -105,8 +105,8 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
             self.price_data["buy_prices"] = data
             self.price_data["last_updated"] = datetime.now()
             _LOGGER.debug(f"Received buy prices: {len(data)} entries")
-            # Trigger sensor update after receiving price data
-            self.async_set_updated_data(self.data)
+            # Trigger sensor update with fresh data
+            self.async_request_refresh()
         except Exception as e:
             _LOGGER.error(f"Error parsing buy price message: {e}")
 
@@ -117,8 +117,8 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
             self.price_data["sell_prices"] = data
             self.price_data["last_updated"] = datetime.now()
             _LOGGER.debug(f"Received sell prices: {len(data)} entries")
-            # Trigger sensor update after receiving price data
-            self.async_set_updated_data(self.data)
+            # Trigger sensor update with fresh data
+            self.async_request_refresh()
         except Exception as e:
             _LOGGER.error(f"Error parsing sell price message: {e}")
 
@@ -183,6 +183,11 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
             data["price_data"] = self.price_data.copy()
             data["config"] = self.config
             data["options"] = self.options
+            
+            # Debug price data structure
+            buy_count = len(self.price_data.get("buy_prices", []))
+            sell_count = len(self.price_data.get("sell_prices", []))
+            _LOGGER.debug(f"Collecting sensor data: buy_prices={buy_count}, sell_prices={sell_count}")
             
             return data
             
