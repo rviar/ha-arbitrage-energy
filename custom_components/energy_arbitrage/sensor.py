@@ -327,7 +327,7 @@ class EnergyArbitrageNextBuyWindowSensor(EnergyArbitrageBaseSensor):
         self._attr_icon = "mdi:cash-minus"
 
     @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> datetime | None:
         if not self.coordinator.data:
             return None
         
@@ -345,7 +345,14 @@ class EnergyArbitrageNextBuyWindowSensor(EnergyArbitrageBaseSensor):
         
         if low_price_windows:
             next_window = low_price_windows[0]
-            return next_window.get('start')
+            start_time_str = next_window.get('start')
+            if start_time_str:
+                try:
+                    # Convert ISO string to datetime object with timezone
+                    return datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+                except (ValueError, TypeError) as e:
+                    _LOGGER.warning(f"Invalid datetime format in next_buy_window: {start_time_str}, error: {e}")
+                    return None
         
         return None
 
@@ -386,7 +393,7 @@ class EnergyArbitrageNextSellWindowSensor(EnergyArbitrageBaseSensor):
         self._attr_icon = "mdi:cash-plus"
 
     @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> datetime | None:
         if not self.coordinator.data:
             return None
         
@@ -404,7 +411,14 @@ class EnergyArbitrageNextSellWindowSensor(EnergyArbitrageBaseSensor):
         
         if high_price_windows:
             next_window = high_price_windows[0]
-            return next_window.get('start')
+            start_time_str = next_window.get('start')
+            if start_time_str:
+                try:
+                    # Convert ISO string to datetime object with timezone
+                    return datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+                except (ValueError, TypeError) as e:
+                    _LOGGER.warning(f"Invalid datetime format in next_sell_window: {start_time_str}, error: {e}")
+                    return None
         
         return None
 
