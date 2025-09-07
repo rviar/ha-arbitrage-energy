@@ -54,6 +54,7 @@ async def async_setup_entry(
         EnergyArbitragePVForecastTodaySensor(coordinator, entry),
         EnergyArbitragePVForecastTomorrowSensor(coordinator, entry),
         EnergyArbitrageAvailableBatteryCapacitySensor(coordinator, entry),
+        EnergyArbitrageEnergyForecastSensor(coordinator, entry),
         EnergyArbitrageNetConsumptionSensor(coordinator, entry),
         EnergyArbitrageSurplusPowerSensor(coordinator, entry),
         
@@ -1281,3 +1282,83 @@ class EnergyArbitrageSurplusPowerSensor(EnergyArbitrageBaseSensor):
         
         # Surplus = PV - Load (positive means we have excess PV)
         return round(max(0, pv_power - load_power), 2)
+
+
+class EnergyArbitrageEnergyForecastSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "energy_forecast")
+        self._attr_name = "Energy Forecast"
+        self._attr_icon = "mdi:crystal-ball"
+        self._attr_state_class = None
+
+    @property
+    def native_value(self) -> str:
+        if not self.coordinator.data:
+            return "unknown"
+        
+        try:
+            from .arbitrage.predictor import EnergyBalancePredictor
+            from .arbitrage.sensor_data_helper import SensorDataHelper
+            
+            sensor_helper = SensorDataHelper(self.hass, self.coordinator.entry.entry_id, self.coordinator)
+            predictor = EnergyBalancePredictor(sensor_helper)
+            
+            energy_situation = predictor.get_energy_situation_summary()
+            return energy_situation
+            
+        except Exception as e:
+            return f"error"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        if not self.coordinator.data:
+            return {}
+        
+        try:
+            from .arbitrage.predictor import EnergyBalancePredictor
+            from .arbitrage.sensor_data_helper import SensorDataHelper
+            
+            sensor_helper = SensorDataHelper(self.hass, self.coordinator.entry.entry_id, self.coordinator)
+            predictor = EnergyBalancePredictor(sensor_helper)
+            
+            # Get energy balances
+            balances = predictor.calculate_combined_balance()
+            
+            # Get battery strategy
+            from .arbitrage.utils import safe_float
+            battery_level = safe_float(self.hass.states.get(self.coordinator.config.get('battery_level_sensor')))
+            battery_capacity = self.coordinator.data.get("battery_capacity", 15000)
+            strategy = predictor.assess_battery_strategy(battery_level, battery_capacity)
+            
+            return {
+                # Today's forecast
+                "today_pv_forecast": f"{balances['today'].pv_forecast_wh:.0f}Wh",
+                "today_consumption_forecast": f"{balances['today'].consumption_forecast_wh:.0f}Wh", 
+                "today_net_balance": f"{balances['today'].net_balance_wh:+.0f}Wh",
+                "today_has_surplus": balances['today'].has_surplus,
+                
+                # Tomorrow's forecast
+                "tomorrow_pv_forecast": f"{balances['tomorrow'].pv_forecast_wh:.0f}Wh",
+                "tomorrow_consumption_forecast": f"{balances['tomorrow'].consumption_forecast_wh:.0f}Wh",
+                "tomorrow_net_balance": f"{balances['tomorrow'].net_balance_wh:+.0f}Wh", 
+                "tomorrow_has_surplus": balances['tomorrow'].has_surplus,
+                
+                # 48h outlook
+                "next_48h_net_balance": f"{balances['next_48h'].net_balance_wh:+.0f}Wh",
+                
+                # Strategy
+                "strategy_recommendation": strategy['recommendation'],
+                "strategy_reason": strategy['reason'],
+                "target_battery_level": f"{strategy['target_battery_level']:.0f}%",
+                "strategy_urgency": strategy['urgency'],
+                "strategy_confidence": f"{strategy['confidence']*100:.0f}%",
+                
+                # Status
+                "forecast_status": "active" if balances['today'].confidence > 0.5 else "limited"
+            }
+            
+        except Exception as e:
+            return {
+                "error": str(e),
+                "status": "unavailable"
+            }

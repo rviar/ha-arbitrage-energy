@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional, Tuple
 
 from .sensor_data_helper import SensorDataHelper
+from .predictor import EnergyBalancePredictor
 from .utils import (
     safe_float, calculate_available_battery_capacity, 
     get_current_price_data, find_price_extremes,
@@ -15,6 +16,7 @@ class ArbitrageOptimizer:
     def __init__(self, coordinator):
         self.coordinator = coordinator
         self.sensor_helper = SensorDataHelper(coordinator.hass, coordinator.entry.entry_id, coordinator)
+        self.energy_predictor = EnergyBalancePredictor(self.sensor_helper)
 
     async def calculate_optimal_action(self, data: Dict[str, Any]) -> Dict[str, Any]:
         try:
@@ -183,7 +185,7 @@ class ArbitrageOptimizer:
         opportunities: List[Dict[str, Any]], 
         data: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Make arbitrage decisions using only sensor data."""
+        """Make predictive arbitrage decisions using sensor data and energy forecasts."""
         
         # Get configuration from sensors
         max_battery_power = self.sensor_helper.get_max_battery_power()
@@ -194,6 +196,7 @@ class ArbitrageOptimizer:
         surplus_power = current_state['surplus_power']
         available_battery = current_state['available_battery_wh']
         min_reserve = current_state['min_reserve_percent']
+        battery_capacity = current_state['battery_capacity']
         
         best_opportunity = opportunities[0] if opportunities else None
         
@@ -209,44 +212,121 @@ class ArbitrageOptimizer:
                 "daily_cycles": cycle_limit_check['daily_cycles']
             }
         
-        # Priority 1: Immediate arbitrage sell if profitable and battery available
-        if (best_opportunity and best_opportunity.get('is_immediate_sell') and 
-            available_battery > 0 and self.sensor_helper.is_battery_discharging_viable()):
+        # 🧠 PREDICTIVE ANALYSIS - NEW!
+        try:
+            energy_strategy = self.energy_predictor.assess_battery_strategy(battery_level, battery_capacity)
+            energy_situation = self.energy_predictor.get_energy_situation_summary()
             
-            discharge_power = min(max_battery_power, available_battery / 2)  # Wh / 2h = W for 2-hour discharge
+            _LOGGER.info(f"🔮 Energy forecast: {energy_situation}")
+            _LOGGER.info(f"🎯 Strategy recommendation: {energy_strategy['recommendation']} - {energy_strategy['reason']}")
+            
+        except Exception as e:
+            _LOGGER.warning(f"Predictive analysis failed, falling back to basic logic: {e}")
+            energy_strategy = {'recommendation': 'hold', 'urgency': 'low'}
+            energy_situation = 'unknown'
+        
+        # 🎯 PREDICTIVE DECISION MAKING
+        
+        # Strategy-based decisions with price validation
+        if energy_strategy['recommendation'] == 'charge_aggressive' and energy_strategy['urgency'] == 'high':
+            # High urgency charging - accept lower margins
+            if (best_opportunity and best_opportunity.get('is_immediate_buy') and 
+                best_opportunity['roi_percent'] >= min_arbitrage_margin * 0.7):  # Accept 70% of normal margin
+                
+                charge_power = min(max_battery_power, surplus_power if surplus_power > 0 else max_battery_power)
+                return {
+                    "action": "charge_arbitrage",
+                    "reason": f"⚡ PREDICTIVE: {energy_strategy['reason']} (ROI: {best_opportunity['roi_percent']:.1f}%)",
+                    "target_power": charge_power,
+                    "target_battery_level": energy_strategy['target_battery_level'],
+                    "profit_forecast": best_opportunity['net_profit_per_kwh'] * (charge_power / 1000),
+                    "opportunity": best_opportunity,
+                    "strategy": energy_strategy['recommendation']
+                }
+        
+        elif energy_strategy['recommendation'] == 'charge_moderate':
+            # Moderate charging - normal margins  
+            if (best_opportunity and best_opportunity.get('is_immediate_buy') and 
+                best_opportunity['roi_percent'] >= min_arbitrage_margin):
+                
+                charge_power = min(max_battery_power, surplus_power if surplus_power > 0 else max_battery_power)
+                return {
+                    "action": "charge_arbitrage",
+                    "reason": f"📊 PREDICTIVE: {energy_strategy['reason']} (ROI: {best_opportunity['roi_percent']:.1f}%)",
+                    "target_power": charge_power,
+                    "target_battery_level": energy_strategy['target_battery_level'],
+                    "profit_forecast": best_opportunity['net_profit_per_kwh'] * (charge_power / 1000),
+                    "opportunity": best_opportunity,
+                    "strategy": energy_strategy['recommendation']
+                }
+        
+        elif energy_strategy['recommendation'] in ['sell_aggressive', 'sell_partial']:
+            # Strategic selling
+            if (best_opportunity and best_opportunity.get('is_immediate_sell') and 
+                available_battery > 0 and self.sensor_helper.is_battery_discharging_viable()):
+                
+                # Respect strategy target level
+                max_discharge_wh = (battery_level - energy_strategy['target_battery_level']) / 100 * battery_capacity
+                max_discharge_wh = max(0, max_discharge_wh)
+                
+                if max_discharge_wh > 1000:  # At least 1kWh to sell
+                    discharge_power = min(max_battery_power, max_discharge_wh / 2)  # 2-hour discharge
+                    
+                    return {
+                        "action": "sell_arbitrage",
+                        "reason": f"💰 PREDICTIVE: {energy_strategy['reason']} (ROI: {best_opportunity['roi_percent']:.1f}%)",
+                        "target_power": -discharge_power,
+                        "target_battery_level": energy_strategy['target_battery_level'],
+                        "profit_forecast": best_opportunity['net_profit_per_kwh'] * (discharge_power / 1000),
+                        "opportunity": best_opportunity,
+                        "strategy": energy_strategy['recommendation']
+                    }
+        
+        # 📈 FALLBACK: Traditional arbitrage if no predictive action
+        # Priority 1: Immediate arbitrage sell if very profitable
+        if (best_opportunity and best_opportunity.get('is_immediate_sell') and 
+            available_battery > 0 and self.sensor_helper.is_battery_discharging_viable() and
+            best_opportunity['roi_percent'] >= min_arbitrage_margin * 1.5):  # Higher threshold for fallback
+            
+            discharge_power = min(max_battery_power, available_battery / 2)
             return {
                 "action": "sell_arbitrage",
-                "reason": f"Selling for arbitrage profit: {best_opportunity['roi_percent']:.1f}% ROI",
+                "reason": f"💸 TRADITIONAL: High ROI opportunity: {best_opportunity['roi_percent']:.1f}%",
                 "target_power": -discharge_power,
                 "target_battery_level": min_reserve + 5,
-                "profit_forecast": best_opportunity['net_profit_per_kwh'] * (discharge_power / 1000),  # Convert W to kW for profit calc
-                "opportunity": best_opportunity
+                "profit_forecast": best_opportunity['net_profit_per_kwh'] * (discharge_power / 1000),
+                "opportunity": best_opportunity,
+                "strategy": "traditional"
             }
         
-        # Priority 2: Immediate arbitrage buy if profitable and battery has space
+        # Priority 2: Immediate arbitrage buy if very profitable
         if (best_opportunity and best_opportunity.get('is_immediate_buy') and 
-            self.sensor_helper.is_battery_charging_viable()):
+            self.sensor_helper.is_battery_charging_viable() and
+            best_opportunity['roi_percent'] >= min_arbitrage_margin * 1.5):  # Higher threshold for fallback
             
             charge_power = min(max_battery_power, surplus_power if surplus_power > 0 else max_battery_power)
             return {
                 "action": "charge_arbitrage", 
-                "reason": f"Charging for future arbitrage: {best_opportunity['roi_percent']:.1f}% ROI",
+                "reason": f"⚡ TRADITIONAL: High ROI opportunity: {best_opportunity['roi_percent']:.1f}%",
                 "target_power": charge_power,
                 "target_battery_level": 95.0,
-                "profit_forecast": best_opportunity['net_profit_per_kwh'] * (charge_power / 1000),  # Convert W to kW for profit calc
-                "opportunity": best_opportunity
+                "profit_forecast": best_opportunity['net_profit_per_kwh'] * (charge_power / 1000),
+                "opportunity": best_opportunity,
+                "strategy": "traditional"
             }
+        # Default: Hold position with predictive insight
+        hold_reason = "🔄 PREDICTIVE HOLD: " + energy_strategy.get('reason', 'No beneficial action identified')
         
-        # Removed Priority 3 & 4: Inverter handles solar/load management automatically
-        # System focuses only on arbitrage opportunities
-        # Default: Hold position
         return {
             "action": "hold",
-            "reason": "No beneficial action identified",
+            "reason": hold_reason,
             "target_power": 0,
             "target_battery_level": battery_level,
             "profit_forecast": sum([op['net_profit_per_kwh'] for op in opportunities[:3]]),
-            "next_opportunity": best_opportunity
+            "next_opportunity": best_opportunity,
+            "energy_situation": energy_situation,
+            "strategy": energy_strategy['recommendation'],
+            "confidence": energy_strategy.get('confidence', 0.5)
         }
 
     def _is_current_time_window(self, time_string: str, tolerance_minutes: int = 30) -> bool:
