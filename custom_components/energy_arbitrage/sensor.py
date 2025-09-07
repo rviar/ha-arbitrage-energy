@@ -627,6 +627,7 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
         
         try:
             from datetime import datetime, timezone
+            from .arbitrage.utils import get_ha_timezone
             
             # Use the same strategic planner instance from optimizer
             if hasattr(self.coordinator, 'optimizer') and hasattr(self.coordinator.optimizer, 'strategic_planner'):
@@ -651,7 +652,7 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
                     "reason": "No active strategic plan"
                 }
             
-            now = datetime.now(timezone.utc)
+            now = get_ha_now(self.hass)
             
             # Basic plan info
             attributes = {
@@ -674,7 +675,10 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
                     attributes[f"active_op_{i+1}_energy"] = f"{op.target_energy_wh:.0f}Wh"
                     attributes[f"active_op_{i+1}_power"] = f"{op.target_power_w:.0f}W"
                     attributes[f"active_op_{i+1}_price"] = f"{self.currency} {op.expected_price:.4f}"
-                    attributes[f"active_op_{i+1}_end_time"] = op.end_time.strftime("%H:%M")
+                    # Convert UTC time to HA timezone for display
+                    ha_tz = get_ha_timezone(self.hass)
+                    local_end_time = op.end_time.astimezone(ha_tz)
+                    attributes[f"active_op_{i+1}_end_time"] = local_end_time.strftime("%H:%M")
                     attributes[f"active_op_{i+1}_reason"] = op.reason
                     attributes[f"active_op_{i+1}_priority"] = op.priority
             
@@ -687,7 +691,10 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
                     attributes[f"upcoming_op_{i+1}_energy"] = f"{op.target_energy_wh:.0f}Wh"
                     attributes[f"upcoming_op_{i+1}_power"] = f"{op.target_power_w:.0f}W"
                     attributes[f"upcoming_op_{i+1}_price"] = f"{self.currency} {op.expected_price:.4f}"
-                    attributes[f"upcoming_op_{i+1}_start_time"] = op.start_time.strftime("%H:%M")
+                    # Convert UTC time to HA timezone for display
+                    ha_tz = get_ha_timezone(self.hass) 
+                    local_start_time = op.start_time.astimezone(ha_tz)
+                    attributes[f"upcoming_op_{i+1}_start_time"] = local_start_time.strftime("%H:%M")
                     attributes[f"upcoming_op_{i+1}_time_until"] = f"{time_until:.0f}min"
                     attributes[f"upcoming_op_{i+1}_reason"] = op.reason
                     attributes[f"upcoming_op_{i+1}_priority"] = op.priority
@@ -701,7 +708,7 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
                     "next_operation_energy": f"{next_op.target_energy_wh:.0f}Wh",
                     "next_operation_power": f"{next_op.target_power_w:.0f}W",
                     "next_operation_price": f"{self.currency} {next_op.expected_price:.4f}",
-                    "next_operation_start": next_op.start_time.strftime("%Y-%m-%d %H:%M"),
+                    "next_operation_start": next_op.start_time.astimezone(get_ha_timezone(self.hass)).strftime("%Y-%m-%d %H:%M"),
                     "next_operation_hours_until": f"{time_until:.1f}h",
                     "next_operation_reason": next_op.reason,
                     "next_operation_priority": next_op.priority

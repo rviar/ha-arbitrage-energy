@@ -8,6 +8,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
+from .utils import get_ha_now, get_ha_timezone
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class PlannedOperation:
     reason: str                         # Human-readable explanation
     dependencies: List[str]             # IDs of operations this depends on
     alternatives: List['PlannedOperation']  # Alternative operations if this fails
+    hass: Any = None                    # HA instance for timezone operations
     
     @property
     def duration_hours(self) -> float:
@@ -48,13 +50,13 @@ class PlannedOperation:
     @property
     def is_active_now(self) -> bool:
         """True if this operation should be active right now."""
-        now = datetime.now(timezone.utc)
+        now = get_ha_now(self.hass)
         return self.start_time <= now <= self.end_time
     
     @property
     def starts_soon(self) -> bool:
         """True if this operation starts within the next hour."""
-        now = datetime.now(timezone.utc)
+        now = get_ha_now(self.hass)
         return now <= self.start_time <= now + timedelta(hours=1)
 
 @dataclass
@@ -69,6 +71,7 @@ class StrategicPlan:
     scenario: str                      # Description of the scenario this plan addresses
     confidence: float                  # Overall confidence in the plan
     fallback_plan: Optional['StrategicPlan']  # Fallback if main plan fails
+    hass: Any = None                   # HA instance for timezone operations
     
     @property
     def active_operations(self) -> List[PlannedOperation]:
@@ -83,7 +86,7 @@ class StrategicPlan:
     @property
     def next_operation(self) -> Optional[PlannedOperation]:
         """The next operation in chronological order."""
-        now = datetime.now(timezone.utc)
+        now = get_ha_now(self.hass)
         future_ops = [op for op in self.operations if op.start_time > now]
         return min(future_ops, key=lambda op: op.start_time) if future_ops else None
 
@@ -95,8 +98,30 @@ class StrategicPlanner:
         self.sensor_helper = sensor_helper
         self.energy_predictor = energy_predictor
         self.time_analyzer = time_analyzer
+        self.hass = sensor_helper.hass  # Store hass for timezone operations
         self._current_plan: Optional[StrategicPlan] = None
         self._plan_history: List[StrategicPlan] = []
+        
+    def _create_operation(self, operation_type: OperationType, start_time: datetime, 
+                         end_time: datetime, target_energy_wh: float, target_power_w: float,
+                         expected_price: float, confidence: float, priority: int,
+                         reason: str, dependencies: List[str] = None, 
+                         alternatives: List['PlannedOperation'] = None) -> PlannedOperation:
+        """Helper to create PlannedOperation with proper hass assignment."""
+        return PlannedOperation(
+            operation_type=operation_type,
+            start_time=start_time,
+            end_time=end_time,
+            target_energy_wh=target_energy_wh,
+            target_power_w=target_power_w,
+            expected_price=expected_price,
+            confidence=confidence,
+            priority=priority,
+            reason=reason,
+            dependencies=dependencies or [],
+            alternatives=alternatives or [],
+            hass=self.hass
+        )
         
     def create_comprehensive_plan(self, 
                                 current_battery_level: float,
@@ -135,9 +160,7 @@ class StrategicPlanner:
             
             # Create the plan
             # Use HA timezone for strategic planning
-            from .utils import get_ha_timezone
-            ha_tz = get_ha_timezone(getattr(self.sensor_helper, 'hass', None))
-            now = datetime.now(ha_tz)
+            now = get_ha_now(self.hass)
             
             plan = StrategicPlan(
                 plan_id=f"plan_{now.strftime('%Y%m%d_%H%M%S')}",
@@ -148,7 +171,8 @@ class StrategicPlanner:
                 risk_assessment=risk_assessment,
                 scenario=scenario,
                 confidence=min([op.confidence for op in operations] + [1.0]),
-                fallback_plan=None  # Will be created if needed
+                fallback_plan=None,  # Will be created if needed
+                hass=self.hass
             )
             
             # Create fallback plan for high-risk scenarios
@@ -423,8 +447,9 @@ class StrategicPlanner:
         
         if transition_type == "surplus_to_deficit":
             # Sell surplus today, prepare for deficit tomorrow
-            sell_windows = [w for w in price_windows if w.action == 'sell' and w.start_time.date() == datetime.now(timezone.utc).date()]
-            buy_windows = [w for w in price_windows if w.action == 'buy' and w.start_time.date() > datetime.now(timezone.utc).date()]
+            today = get_ha_now(self.hass).date()
+            sell_windows = [w for w in price_windows if w.action == 'sell' and w.start_time.date() == today]
+            buy_windows = [w for w in price_windows if w.action == 'buy' and w.start_time.date() > today]
             
             # Moderate selling today
             operations.extend(self._create_surplus_selling_operations(sell_windows + price_windows, current_battery_level, battery_capacity_wh, max_power_w))
@@ -433,8 +458,9 @@ class StrategicPlanner:
             
         elif transition_type == "deficit_to_surplus":
             # Charge today, prepare to sell tomorrow  
-            buy_windows = [w for w in price_windows if w.action == 'buy' and w.start_time.date() == datetime.now(timezone.utc).date()]
-            sell_windows = [w for w in price_windows if w.action == 'sell' and w.start_time.date() > datetime.now(timezone.utc).date()]
+            today = get_ha_now(self.hass).date()
+            buy_windows = [w for w in price_windows if w.action == 'buy' and w.start_time.date() == today]
+            sell_windows = [w for w in price_windows if w.action == 'sell' and w.start_time.date() > today]
             
             # Strategic charging today
             operations.extend(self._create_deficit_charging_operations(buy_windows + price_windows, current_battery_level, battery_capacity_wh, max_power_w))
@@ -503,10 +529,11 @@ class StrategicPlanner:
         """Create hold operations to fill gaps between active operations."""
         if not existing_operations:
             # If no operations planned, create a single monitoring hold
+            now = get_ha_now(self.hass)
             return [PlannedOperation(
                 operation_type=OperationType.HOLD_WAIT,
-                start_time=datetime.now(timezone.utc),
-                end_time=datetime.now(timezone.utc) + timedelta(hours=24),
+                start_time=now,
+                end_time=now + timedelta(hours=24),
                 target_energy_wh=0,
                 target_power_w=0,
                 expected_price=0,
@@ -514,7 +541,8 @@ class StrategicPlanner:
                 priority=5,
                 reason="Monitoring mode: No beneficial operations identified",
                 dependencies=[],
-                alternatives=[]
+                alternatives=[],
+                hass=self.hass
             )]
         
         # For now, don't create explicit hold operations between other operations
@@ -613,10 +641,11 @@ class StrategicPlanner:
         
         # If battery is low, add conservative charging
         if current_battery_level < 40:
+            now = get_ha_now(self.hass)
             operations.append(PlannedOperation(
                 operation_type=OperationType.CHARGE_URGENT,
-                start_time=datetime.now(timezone.utc),
-                end_time=datetime.now(timezone.utc) + timedelta(hours=4),
+                start_time=now,
+                end_time=now + timedelta(hours=4),
                 target_energy_wh=2000,  # 2kWh
                 target_power_w=500,     # 500W
                 expected_price=0.2,     # Conservative price
@@ -624,14 +653,17 @@ class StrategicPlanner:
                 priority=1,
                 reason="Fallback: Conservative charging to ensure minimum energy",
                 dependencies=[],
-                alternatives=[]
+                alternatives=[],
+                hass=self.hass
             ))
         
         # Add monitoring hold
+        if 'now' not in locals():
+            now = get_ha_now(self.hass)
         operations.append(PlannedOperation(
             operation_type=OperationType.HOLD_PRESERVE,
-            start_time=datetime.now(timezone.utc) + timedelta(hours=4),
-            end_time=datetime.now(timezone.utc) + timedelta(hours=24),
+            start_time=now + timedelta(hours=4),
+            end_time=now + timedelta(hours=24),
             target_energy_wh=0,
             target_power_w=0,
             expected_price=0,
@@ -639,28 +671,31 @@ class StrategicPlanner:
             priority=5,
             reason="Fallback: Preserve energy until conditions improve",
             dependencies=[],
-            alternatives=[]
+            alternatives=[],
+            hass=self.hass
         ))
         
         return StrategicPlan(
             plan_id=f"fallback_{main_plan.plan_id}",
-            created_at=datetime.now(timezone.utc),
+            created_at=get_ha_now(self.hass),
             valid_until=main_plan.valid_until,
             operations=operations,
             expected_profit=-0.4,  # Conservative cost estimate
             risk_assessment="low",
             scenario="fallback_conservative",
             confidence=0.9,
-            fallback_plan=None
+            fallback_plan=None,
+            hass=self.hass
         )
     
     def _create_emergency_plan(self, current_battery_level: float, battery_capacity_wh: float) -> StrategicPlan:
         """Create an emergency plan when main planning fails."""
         
+        now = get_ha_now(self.hass)
         operation = PlannedOperation(
             operation_type=OperationType.HOLD_PRESERVE,
-            start_time=datetime.now(timezone.utc),
-            end_time=datetime.now(timezone.utc) + timedelta(hours=24),
+            start_time=now,
+            end_time=now + timedelta(hours=24),
             target_energy_wh=0,
             target_power_w=0,
             expected_price=0,
@@ -668,24 +703,26 @@ class StrategicPlanner:
             priority=5,
             reason="Emergency mode: System planning failed, holding position",
             dependencies=[],
-            alternatives=[]
+            alternatives=[],
+            hass=self.hass
         )
         
         return StrategicPlan(
-            plan_id=f"emergency_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
-            created_at=datetime.now(timezone.utc),
-            valid_until=datetime.now(timezone.utc) + timedelta(hours=24),
+            plan_id=f"emergency_{now.strftime('%Y%m%d_%H%M%S')}",
+            created_at=now,
+            valid_until=now + timedelta(hours=24),
             operations=[operation],
             expected_profit=0,
             risk_assessment="low",
             scenario="emergency_hold",
             confidence=1.0,
-            fallback_plan=None
+            fallback_plan=None,
+            hass=self.hass
         )
     
     def get_current_plan(self) -> Optional[StrategicPlan]:
         """Get the currently active strategic plan."""
-        if self._current_plan and self._current_plan.valid_until > datetime.now(timezone.utc):
+        if self._current_plan and self._current_plan.valid_until > get_ha_now(self.hass):
             return self._current_plan
         return None
     
@@ -731,7 +768,7 @@ class StrategicPlanner:
         upcoming = plan.upcoming_operations
         if upcoming:
             next_op = upcoming[0]
-            time_until = (next_op.start_time - datetime.now(timezone.utc)).total_seconds() / 60
+            time_until = (next_op.start_time - get_ha_now(self.hass)).total_seconds() / 60
             
             return {
                 "action": "hold",
@@ -745,7 +782,7 @@ class StrategicPlanner:
         # Plan exists but no immediate actions
         next_op = plan.next_operation
         if next_op:
-            time_until = (next_op.start_time - datetime.now(timezone.utc)).total_seconds() / 3600
+            time_until = (next_op.start_time - get_ha_now(self.hass)).total_seconds() / 3600
             return {
                 "action": "hold",
                 "reason": f"🎯 STRATEGIC: Next operation in {time_until:.1f}h ({next_op.operation_type.value})",

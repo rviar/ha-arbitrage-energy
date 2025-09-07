@@ -17,6 +17,11 @@ def get_ha_timezone(hass=None) -> timezone:
     _LOGGER.debug("Using UTC as fallback timezone")
     return timezone.utc
 
+def get_ha_now(hass=None) -> datetime:
+    """Get current datetime in Home Assistant timezone."""
+    ha_tz = get_ha_timezone(hass)
+    return datetime.now(ha_tz)
+
 def safe_float(state, default: float = 0.0) -> float:
     if not state:
         return default

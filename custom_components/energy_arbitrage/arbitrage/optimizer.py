@@ -261,7 +261,8 @@ class ArbitrageOptimizer:
         # 🎯 STRATEGIC PLANNING - NEW! 
         try:
             # Update strategic plan every 30 minutes or when conditions change significantly
-            now = datetime.now(timezone.utc)
+            from .utils import get_ha_now
+            now = get_ha_now(getattr(self.coordinator, 'hass', None))
             should_update_plan = (
                 self._last_plan_update is None or
                 (now - self._last_plan_update).total_seconds() > 1800 or  # 30 minutes

@@ -96,7 +96,8 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
             except Exception as e:
                 _LOGGER.warning(f"Failed to get HA timezone, using system UTC: {e}")
         
-        return datetime.now(timezone.utc)
+        from .arbitrage.utils import get_ha_now
+        return get_ha_now(self.hass)
     
     def _find_current_price_entry(self, price_data: list) -> dict:
         """Find the current price entry based on start/end timestamps using HA timezone."""
