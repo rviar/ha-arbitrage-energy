@@ -844,7 +844,10 @@ class EnergyArbitragePriceWindowsSensor(EnergyArbitrageBaseSensor):
             sell_windows = [w for w in price_windows if w.action == 'sell'][:3]
             
             for i, window in enumerate(buy_windows):
+                # Full timestamp with timezone for debugging
+                attributes[f"buy_window_{i+1}_timestamp"] = window.start_time.strftime("%Y-%m-%d %H:%M:%S %Z")
                 attributes[f"buy_window_{i+1}_start"] = window.start_time.strftime("%H:%M")
+                attributes[f"buy_window_{i+1}_end"] = window.end_time.strftime("%H:%M")
                 attributes[f"buy_window_{i+1}_duration"] = f"{window.duration_hours:.1f}h"
                 attributes[f"buy_window_{i+1}_price"] = f"{window.price:.4f}"
                 attributes[f"buy_window_{i+1}_urgency"] = window.urgency
@@ -857,7 +860,10 @@ class EnergyArbitragePriceWindowsSensor(EnergyArbitrageBaseSensor):
                     attributes[f"buy_window_{i+1}_status"] = "past"
             
             for i, window in enumerate(sell_windows):
+                # Full timestamp with timezone for debugging
+                attributes[f"sell_window_{i+1}_timestamp"] = window.start_time.strftime("%Y-%m-%d %H:%M:%S %Z")
                 attributes[f"sell_window_{i+1}_start"] = window.start_time.strftime("%H:%M")
+                attributes[f"sell_window_{i+1}_end"] = window.end_time.strftime("%H:%M")
                 attributes[f"sell_window_{i+1}_duration"] = f"{window.duration_hours:.1f}h"
                 attributes[f"sell_window_{i+1}_price"] = f"{window.price:.4f}"
                 attributes[f"sell_window_{i+1}_urgency"] = window.urgency
