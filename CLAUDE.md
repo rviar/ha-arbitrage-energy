@@ -65,7 +65,6 @@ custom_components/energy_arbitrage/
 sensor.energy_arbitrage_next_action        # Следующее действие (charge/discharge/hold)
 sensor.energy_arbitrage_target_power       # Целевая мощность заряда/разряда
 sensor.energy_arbitrage_profit_forecast    # Прогноз прибыли за 24 часа
-sensor.energy_arbitrage_battery_target     # Целевой уровень заряда батареи
 sensor.energy_arbitrage_sell_window        # Начало следующего окна продажи
 sensor.energy_arbitrage_buy_window         # Начало следующего окна покупки
 ```
@@ -184,7 +183,6 @@ energy_arbitrage.manual_override           # Ручное управление �
    sensor.energy_arbitrage_next_action            # Следующее действие
    sensor.energy_arbitrage_target_power           # Целевая мощность
    sensor.energy_arbitrage_profit_forecast        # Прогноз прибыли
-   sensor.energy_arbitrage_battery_target         # Целевой уровень батареи
    sensor.energy_arbitrage_roi                    # Ожидаемый ROI
    ```
 

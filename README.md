@@ -106,7 +106,6 @@
 - `sensor.energy_arbitrage_next_action` - Следующее действие системы
 - `sensor.energy_arbitrage_target_power` - Целевая мощность заряда/разряда
 - `sensor.energy_arbitrage_profit_forecast` - Прогноз прибыли (EUR)
-- `sensor.energy_arbitrage_battery_target` - Целевой уровень заряда батареи
 - `sensor.energy_arbitrage_roi` - Ожидаемая рентабельность (%)
 - `sensor.energy_arbitrage_status` - Статус системы
 

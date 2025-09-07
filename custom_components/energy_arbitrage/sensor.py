@@ -27,7 +27,6 @@ async def async_setup_entry(
         EnergyArbitrageNextActionSensor(coordinator, entry),
         EnergyArbitrageTargetPowerSensor(coordinator, entry),
         EnergyArbitrageProfitForecastSensor(coordinator, entry),
-        EnergyArbitrageBatteryTargetSensor(coordinator, entry),
         EnergyArbitrageROISensor(coordinator, entry),
         EnergyArbitrageStatusSensor(coordinator, entry),
         
@@ -160,24 +159,6 @@ class EnergyArbitrageProfitForecastSensor(EnergyArbitrageBaseSensor):
         
         decision = self.coordinator.data.get("decision", {})
         return round(decision.get("profit_forecast", 0.0), 4)
-
-class EnergyArbitrageBatteryTargetSensor(EnergyArbitrageBaseSensor):
-    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry, "battery_target")
-        self._attr_name = "Battery Target Level"
-        self._attr_device_class = SensorDeviceClass.BATTERY
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = PERCENTAGE
-        self._attr_icon = "mdi:battery"
-
-    @property
-    def native_value(self) -> float:
-        if not self.coordinator.data:
-            return 0.0
-        
-        decision = self.coordinator.data.get("decision", {})
-        target = decision.get("target_battery_level")
-        return round(target, 1) if target is not None else 0.0
 
 class EnergyArbitrageROISensor(EnergyArbitrageBaseSensor):
     def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:

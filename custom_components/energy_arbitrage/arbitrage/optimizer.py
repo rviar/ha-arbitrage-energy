@@ -44,11 +44,16 @@ class ArbitrageOptimizer:
             
         except Exception as e:
             _LOGGER.error(f"Error calculating optimal action: {e}")
+            # Return safe defaults instead of None
+            try:
+                battery_level = self.sensor_helper.get_battery_level() or 50.0
+            except Exception:
+                battery_level = 50.0
             return {
                 "action": "hold",
                 "reason": f"Calculation error: {str(e)}",
                 "target_power": 0,
-                "target_battery_level": None,
+                "target_battery_level": battery_level,  # Use current level instead of None
                 "profit_forecast": 0,
                 "next_opportunity": None
             }
@@ -205,10 +210,14 @@ class ArbitrageOptimizer:
         max_daily_cycles = self.sensor_helper.get_max_daily_cycles()
         
         battery_level = current_state['battery_level']
-        surplus_power = current_state['surplus_power']
-        available_battery = current_state['available_battery_wh']
-        min_reserve = current_state['min_reserve_percent']
         battery_capacity = current_state['battery_capacity']
+        min_reserve = current_state['min_reserve_percent']
+        
+        # Calculate derived values directly  
+        pv_power = current_state['pv_power']
+        load_power = current_state['load_power']
+        surplus_power = max(0, pv_power - load_power)  # Positive when PV > Load
+        available_battery = calculate_available_battery_capacity(battery_level, battery_capacity, min_reserve)
         
         best_opportunity = opportunities[0] if opportunities else None
         
@@ -234,7 +243,7 @@ class ArbitrageOptimizer:
             
         except Exception as e:
             _LOGGER.warning(f"Predictive analysis failed, falling back to basic logic: {e}")
-            energy_strategy = {'recommendation': 'hold', 'urgency': 'low'}
+            energy_strategy = {'recommendation': 'hold', 'urgency': 'low', 'target_battery_level': battery_level}
             energy_situation = 'unknown'
         
         # 🕐 TIME WINDOW ANALYSIS - NEW!
