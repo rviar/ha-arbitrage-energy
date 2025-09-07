@@ -630,7 +630,8 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
             
             # Use the same strategic planner instance from optimizer
             if hasattr(self.coordinator, 'optimizer') and hasattr(self.coordinator.optimizer, 'strategic_planner'):
-                current_plan = self.coordinator.optimizer.strategic_planner.get_current_plan()
+                planner_instance = self.coordinator.optimizer.strategic_planner
+                current_plan = planner_instance.get_current_plan()
             else:
                 # Fallback: create new instance if optimizer not available
                 from .arbitrage.strategic_planner import StrategicPlanner
@@ -641,8 +642,8 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
                 sensor_helper = SensorDataHelper(self.hass, self.coordinator.entry.entry_id, self.coordinator)
                 energy_predictor = EnergyBalancePredictor(sensor_helper)
                 time_analyzer = TimeWindowAnalyzer(sensor_helper)
-                strategic_planner = StrategicPlanner(sensor_helper, energy_predictor, time_analyzer)
-                current_plan = strategic_planner.get_current_plan()
+                planner_instance = StrategicPlanner(sensor_helper, energy_predictor, time_analyzer)
+                current_plan = planner_instance.get_current_plan()
             
             if not current_plan:
                 return {
@@ -720,7 +721,7 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
             })
             
             # Current recommendation
-            recommendation = strategic_planner.get_current_recommendation()
+            recommendation = planner_instance.get_current_recommendation()
             attributes.update({
                 "current_recommendation": recommendation.get('action', 'unknown'),
                 "recommendation_reason": recommendation.get('reason', ''),
