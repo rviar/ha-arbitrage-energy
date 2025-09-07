@@ -20,29 +20,36 @@ class PriceWindow:
     duration_hours: float         # Window duration in hours
     confidence: float             # Forecast confidence 0-1
     urgency: str                  # "low" | "medium" | "high"
+    _analyzer: Optional['TimeWindowAnalyzer'] = None  # Reference to analyzer for getting current time
+    
+    def _get_now(self) -> datetime:
+        """Get current time, preferably from analyzer."""
+        if self._analyzer:
+            return self._analyzer._get_current_time()
+        return self._get_current_time()
     
     @property
     def is_current(self) -> bool:
         """True if window is happening now."""
-        now = datetime.now(timezone.utc)
+        now = self._get_now()
         return self.start_time <= now <= self.end_time
     
     @property
     def is_upcoming(self) -> bool:
         """True if window is in the future."""
-        now = datetime.now(timezone.utc)
+        now = self._get_now()
         return now < self.start_time
     
     @property
     def time_until_start(self) -> timedelta:
         """Time until window starts."""
-        now = datetime.now(timezone.utc)
+        now = self._get_now()
         return max(timedelta(0), self.start_time - now)
     
     @property
     def time_remaining(self) -> timedelta:
         """Time remaining in current window."""
-        now = datetime.now(timezone.utc)
+        now = self._get_now()
         if self.is_current:
             return max(timedelta(0), self.end_time - now)
         return timedelta(0)
@@ -70,6 +77,20 @@ class TimeWindowAnalyzer:
     def __init__(self, sensor_helper):
         self.sensor_helper = sensor_helper
         self._price_history = []  # Cache for price data analysis
+        
+    def _get_current_time(self) -> datetime:
+        """Get current time in UTC from Home Assistant."""
+        if hasattr(self.sensor_helper, 'coordinator') and self.sensor_helper.coordinator:
+            hass = self.sensor_helper.coordinator.hass
+            if hass and hasattr(hass.config, 'time_zone'):
+                # Get HA's timezone and convert to UTC
+                import zoneinfo
+                tz = zoneinfo.ZoneInfo(str(hass.config.time_zone))
+                local_now = datetime.now(tz)
+                return local_now.astimezone(timezone.utc)
+        
+        # Fallback to system UTC
+        return self._get_current_time()
         
     def analyze_price_windows(self, price_data: Dict[str, Any], hours_ahead: int = 24) -> List[PriceWindow]:
         """Analyze price data to find optimal trading windows."""
@@ -126,7 +147,7 @@ class TimeWindowAnalyzer:
                     continue
                 
                 # Skip past prices
-                now = datetime.now(timezone.utc)
+                now = self._get_current_time()
                 if timestamp < now:
                     continue
                 
@@ -146,8 +167,8 @@ class TimeWindowAnalyzer:
                             'count': 1
                         }
                     else:
-                        # Extend current window if consecutive
-                        if timestamp <= current_window['end']:
+                        # Extend current window if consecutive (no gap)
+                        if timestamp == current_window['end']:
                             current_window['end'] = timestamp + timedelta(hours=1)
                             current_window['price'] = min(current_window['price'], price)
                             current_window['count'] += 1
@@ -205,7 +226,7 @@ class TimeWindowAnalyzer:
                     continue
                 
                 # Skip past prices
-                now = datetime.now(timezone.utc)
+                now = self._get_current_time()
                 if timestamp < now:
                     continue
                 
@@ -225,8 +246,8 @@ class TimeWindowAnalyzer:
                             'count': 1
                         }
                     else:
-                        # Extend current window if consecutive
-                        if timestamp <= current_window['end']:
+                        # Extend current window if consecutive (no gap)
+                        if timestamp == current_window['end']:
                             current_window['end'] = timestamp + timedelta(hours=1)
                             current_window['price'] = max(current_window['price'], price)
                             current_window['count'] += 1
@@ -262,7 +283,7 @@ class TimeWindowAnalyzer:
         duration = (window_data['end'] - window_data['start']).total_seconds() / 3600
         
         # Determine urgency based on timing and duration
-        now = datetime.now(timezone.utc)
+        now = self._get_current_time()
         time_until_start = (window_data['start'] - now).total_seconds() / 3600
         
         if time_until_start <= 1:
@@ -279,7 +300,8 @@ class TimeWindowAnalyzer:
             price=window_data['price'],
             duration_hours=duration,
             confidence=0.8,  # High confidence for price data
-            urgency=urgency
+            urgency=urgency,
+            _analyzer=self
         )
     
     def _create_sell_window(self, window_data: Dict) -> PriceWindow:
@@ -287,7 +309,7 @@ class TimeWindowAnalyzer:
         duration = (window_data['end'] - window_data['start']).total_seconds() / 3600
         
         # Determine urgency based on timing and duration
-        now = datetime.now(timezone.utc)
+        now = self._get_current_time()
         time_until_start = (window_data['start'] - now).total_seconds() / 3600
         
         if time_until_start <= 1:
@@ -304,7 +326,8 @@ class TimeWindowAnalyzer:
             price=window_data['price'],
             duration_hours=duration,
             confidence=0.8,  # High confidence for price data
-            urgency=urgency
+            urgency=urgency,
+            _analyzer=self
         )
     
     def plan_battery_operation(self, 
@@ -368,7 +391,7 @@ class TimeWindowAnalyzer:
     def get_current_price_situation(self, windows: List[PriceWindow]) -> Dict[str, Any]:
         """Analyze current price situation and upcoming opportunities."""
         
-        now = datetime.now(timezone.utc)
+        now = self._get_current_time()
         
         # Find current windows
         current_windows = [w for w in windows if w.is_current]
