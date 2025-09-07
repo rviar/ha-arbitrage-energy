@@ -585,19 +585,21 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
             return "no_data"
         
         try:
-            from .arbitrage.strategic_planner import StrategicPlanner
-            from .arbitrage.sensor_data_helper import SensorDataHelper
-            from .arbitrage.predictor import EnergyBalancePredictor
-            from .arbitrage.time_analyzer import TimeWindowAnalyzer
-            
-            # Create components
-            sensor_helper = SensorDataHelper(self.hass, self.coordinator.entry.entry_id, self.coordinator)
-            energy_predictor = EnergyBalancePredictor(sensor_helper)
-            time_analyzer = TimeWindowAnalyzer(sensor_helper)
-            strategic_planner = StrategicPlanner(sensor_helper, energy_predictor, time_analyzer)
-            
-            # Get current plan
-            current_plan = strategic_planner.get_current_plan()
+            # Use the same strategic planner instance from optimizer
+            if hasattr(self.coordinator, 'optimizer') and hasattr(self.coordinator.optimizer, 'strategic_planner'):
+                current_plan = self.coordinator.optimizer.strategic_planner.get_current_plan()
+            else:
+                # Fallback: create new instance if optimizer not available
+                from .arbitrage.strategic_planner import StrategicPlanner
+                from .arbitrage.sensor_data_helper import SensorDataHelper  
+                from .arbitrage.predictor import EnergyBalancePredictor
+                from .arbitrage.time_analyzer import TimeWindowAnalyzer
+                
+                sensor_helper = SensorDataHelper(self.hass, self.coordinator.entry.entry_id, self.coordinator)
+                energy_predictor = EnergyBalancePredictor(sensor_helper)
+                time_analyzer = TimeWindowAnalyzer(sensor_helper)
+                strategic_planner = StrategicPlanner(sensor_helper, energy_predictor, time_analyzer)
+                current_plan = strategic_planner.get_current_plan()
             
             if not current_plan:
                 return "no_active_plan"
@@ -624,20 +626,23 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
             return {}
         
         try:
-            from .arbitrage.strategic_planner import StrategicPlanner
-            from .arbitrage.sensor_data_helper import SensorDataHelper
-            from .arbitrage.predictor import EnergyBalancePredictor
-            from .arbitrage.time_analyzer import TimeWindowAnalyzer
             from datetime import datetime, timezone
             
-            # Create components
-            sensor_helper = SensorDataHelper(self.hass, self.coordinator.entry.entry_id, self.coordinator)
-            energy_predictor = EnergyBalancePredictor(sensor_helper)
-            time_analyzer = TimeWindowAnalyzer(sensor_helper)
-            strategic_planner = StrategicPlanner(sensor_helper, energy_predictor, time_analyzer)
-            
-            # Get current plan
-            current_plan = strategic_planner.get_current_plan()
+            # Use the same strategic planner instance from optimizer
+            if hasattr(self.coordinator, 'optimizer') and hasattr(self.coordinator.optimizer, 'strategic_planner'):
+                current_plan = self.coordinator.optimizer.strategic_planner.get_current_plan()
+            else:
+                # Fallback: create new instance if optimizer not available
+                from .arbitrage.strategic_planner import StrategicPlanner
+                from .arbitrage.sensor_data_helper import SensorDataHelper
+                from .arbitrage.predictor import EnergyBalancePredictor
+                from .arbitrage.time_analyzer import TimeWindowAnalyzer
+                
+                sensor_helper = SensorDataHelper(self.hass, self.coordinator.entry.entry_id, self.coordinator)
+                energy_predictor = EnergyBalancePredictor(sensor_helper)
+                time_analyzer = TimeWindowAnalyzer(sensor_helper)
+                strategic_planner = StrategicPlanner(sensor_helper, energy_predictor, time_analyzer)
+                current_plan = strategic_planner.get_current_plan()
             
             if not current_plan:
                 return {

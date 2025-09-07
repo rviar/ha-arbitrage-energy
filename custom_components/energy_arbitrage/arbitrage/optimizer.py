@@ -265,7 +265,7 @@ class ArbitrageOptimizer:
             should_update_plan = (
                 self._last_plan_update is None or
                 (now - self._last_plan_update).total_seconds() > 1800 or  # 30 minutes
-                price_situation.get('time_pressure') == 'high'  # Urgent situations need fresh plans
+                price_situation.get('time_pressure') in ['high', 'medium']  # Urgent and medium pressure situations need fresh plans
             )
             
             if should_update_plan:
