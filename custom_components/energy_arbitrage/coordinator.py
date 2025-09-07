@@ -1,7 +1,8 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import zoneinfo
 from typing import Any, Dict, Optional
 
 from homeassistant.config_entries import ConfigEntry
@@ -81,6 +82,56 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
 
     async def async_setup(self):
         await self._subscribe_mqtt_topics()
+        
+    def _get_current_time_utc(self) -> datetime:
+        """Get current time in UTC considering HA's timezone."""
+        if hasattr(self.hass.config, 'time_zone'):
+            try:
+                tz = zoneinfo.ZoneInfo(str(self.hass.config.time_zone))
+                local_now = datetime.now(tz)
+                return local_now.astimezone(timezone.utc)
+            except Exception as e:
+                _LOGGER.warning(f"Failed to get HA timezone, using system UTC: {e}")
+        
+        return datetime.now(timezone.utc)
+    
+    def _find_current_price_entry(self, price_data: list) -> dict:
+        """Find the current price entry based on start/end timestamps."""
+        if not price_data:
+            return {}
+            
+        current_time = self._get_current_time_utc()
+        _LOGGER.debug(f"Looking for current price at {current_time}")
+        
+        for entry in price_data:
+            try:
+                start_time = datetime.fromisoformat(entry['start'].replace('Z', '+00:00'))
+                end_time = datetime.fromisoformat(entry['end'].replace('Z', '+00:00'))
+                
+                _LOGGER.debug(f"Checking period {start_time} - {end_time}")
+                
+                if start_time <= current_time < end_time:
+                    _LOGGER.debug(f"Found current period: {entry}")
+                    return entry
+                    
+            except (KeyError, ValueError) as e:
+                _LOGGER.debug(f"Invalid price entry format: {e}")
+                continue
+        
+        _LOGGER.warning(f"No current price period found, using first entry if available")
+        return price_data[0] if price_data else {}
+    
+    def get_current_buy_price(self) -> float:
+        """Get current buy price with proper time matching."""
+        buy_prices = self.price_data.get("buy_prices", [])
+        current_entry = self._find_current_price_entry(buy_prices)
+        return current_entry.get("value", 0.0) or 0.0
+    
+    def get_current_sell_price(self) -> float:
+        """Get current sell price with proper time matching."""
+        sell_prices = self.price_data.get("sell_prices", [])
+        current_entry = self._find_current_price_entry(sell_prices)
+        return current_entry.get("value", 0.0) or 0.0
 
     async def _subscribe_mqtt_topics(self):
         buy_topic = self.config.get(CONF_MQTT_BUY_TOPIC, "energy/forecast/buy")

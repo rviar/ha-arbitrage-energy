@@ -197,16 +197,9 @@ class EnergyArbitrageCurrentBuyPriceSensor(EnergyArbitrageBaseSensor):
         if not self.coordinator.data:
             return 0.0
         
-        # Get buy price from MQTT data
-        price_data = self.coordinator.data.get("price_data", {})
-        buy_prices = price_data.get("buy_prices", [])
-        
-        if buy_prices and len(buy_prices) > 0:
-            # Use the first (current) price
-            current_price = buy_prices[0].get("value", 0.0) or 0.0  # Handle None values
-            return round(current_price, 4)
-            
-        return 0.0
+        # Get current buy price using proper time matching
+        current_price = self.coordinator.get_current_buy_price()
+        return round(current_price, 4)
 
     @property
     def native_unit_of_measurement(self) -> str:
@@ -220,15 +213,25 @@ class EnergyArbitrageCurrentBuyPriceSensor(EnergyArbitrageBaseSensor):
         price_data = self.coordinator.data.get("price_data", {})
         buy_prices = price_data.get("buy_prices", [])
         
+        # Get current entry using proper time matching
+        current_entry = self.coordinator._find_current_price_entry(buy_prices)
+        
         attrs = {
             "data_source": "mqtt_energy_forecast",
             "update_time": price_data.get("last_updated", "unknown"),
-            "prices_count": len(buy_prices)
+            "prices_count": len(buy_prices),
+            "current_timestamp": current_entry.get("start", "unknown"),
+            "current_period_end": current_entry.get("end", "unknown"),
         }
         
-        if buy_prices:
-            attrs["next_price"] = buy_prices[1].get("value", 0.0) if len(buy_prices) > 1 else None  # 'value'
-            attrs["current_timestamp"] = buy_prices[0].get("start", "unknown")  # 'start'
+        # Try to find next price entry
+        if current_entry and buy_prices:
+            current_start = current_entry.get("start")
+            for i, entry in enumerate(buy_prices):
+                if entry.get("start") == current_start and i + 1 < len(buy_prices):
+                    attrs["next_price"] = buy_prices[i + 1].get("value", 0.0)
+                    attrs["next_timestamp"] = buy_prices[i + 1].get("start", "unknown")
+                    break
         
         return attrs
 
@@ -249,16 +252,9 @@ class EnergyArbitrageCurrentSellPriceSensor(EnergyArbitrageBaseSensor):
         if not self.coordinator.data:
             return 0.0
         
-        # Get sell price from MQTT data
-        price_data = self.coordinator.data.get("price_data", {})
-        sell_prices = price_data.get("sell_prices", [])
-        
-        if sell_prices and len(sell_prices) > 0:
-            # Use the first (current) price
-            current_price = sell_prices[0].get("value", 0.0) or 0.0  # Handle None values
-            return round(current_price, 4)
-            
-        return 0.0
+        # Get current sell price using proper time matching
+        current_price = self.coordinator.get_current_sell_price()
+        return round(current_price, 4)
 
     @property
     def native_unit_of_measurement(self) -> str:
@@ -272,15 +268,25 @@ class EnergyArbitrageCurrentSellPriceSensor(EnergyArbitrageBaseSensor):
         price_data = self.coordinator.data.get("price_data", {})
         sell_prices = price_data.get("sell_prices", [])
         
+        # Get current entry using proper time matching
+        current_entry = self.coordinator._find_current_price_entry(sell_prices)
+        
         attrs = {
             "data_source": "mqtt_energy_forecast",
             "update_time": price_data.get("last_updated", "unknown"),
-            "prices_count": len(sell_prices)
+            "prices_count": len(sell_prices),
+            "current_timestamp": current_entry.get("start", "unknown"),
+            "current_period_end": current_entry.get("end", "unknown"),
         }
         
-        if sell_prices:
-            attrs["next_price"] = sell_prices[1].get("value", 0.0) if len(sell_prices) > 1 else None  # 'value'  
-            attrs["current_timestamp"] = sell_prices[0].get("start", "unknown")  # 'start'
+        # Try to find next price entry
+        if current_entry and sell_prices:
+            current_start = current_entry.get("start")
+            for i, entry in enumerate(sell_prices):
+                if entry.get("start") == current_start and i + 1 < len(sell_prices):
+                    attrs["next_price"] = sell_prices[i + 1].get("value", 0.0)
+                    attrs["next_timestamp"] = sell_prices[i + 1].get("start", "unknown")
+                    break
         
         return attrs
 
