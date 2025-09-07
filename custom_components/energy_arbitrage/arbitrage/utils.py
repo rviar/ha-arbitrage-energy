@@ -1,8 +1,21 @@
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Any, Optional, Union, Dict, List
+import zoneinfo
 
 _LOGGER = logging.getLogger(__name__)
+
+def get_ha_timezone(hass=None) -> timezone:
+    """Get Home Assistant configured timezone."""
+    if hass and hasattr(hass.config, 'time_zone'):
+        try:
+            return zoneinfo.ZoneInfo(hass.config.time_zone)
+        except Exception as e:
+            _LOGGER.warning(f"Failed to get HA timezone {hass.config.time_zone}: {e}")
+    
+    # Fallback to UTC if HA timezone not available
+    _LOGGER.debug("Using UTC as fallback timezone")
+    return timezone.utc
 
 def safe_float(state, default: float = 0.0) -> float:
     if not state:
@@ -38,23 +51,28 @@ def safe_int(state, default: int = 0) -> int:
     except (ValueError, TypeError):
         return default
 
-def parse_datetime(dt_string: str) -> Optional[datetime]:
+def parse_datetime(dt_string: str, hass=None) -> Optional[datetime]:
     """Parse datetime string with proper timezone handling."""
     try:
         if not dt_string:
             return None
+        
+        ha_tz = get_ha_timezone(hass)
             
         # Handle UTC 'Z' suffix
         if dt_string.endswith('Z'):
-            # Remove Z and explicitly set UTC timezone
-            return datetime.fromisoformat(dt_string[:-1]).replace(tzinfo=timezone.utc)
+            # Parse as UTC, then convert to HA timezone
+            utc_dt = datetime.fromisoformat(dt_string[:-1]).replace(tzinfo=timezone.utc)
+            return utc_dt.astimezone(ha_tz)
         
         # Handle explicit timezone offset (like +00:00)
         if '+' in dt_string or dt_string.count('-') >= 3:  # ISO format with timezone
-            return datetime.fromisoformat(dt_string)
+            parsed_dt = datetime.fromisoformat(dt_string)
+            return parsed_dt.astimezone(ha_tz)
         
-        # Assume UTC if no timezone info
-        return datetime.fromisoformat(dt_string).replace(tzinfo=timezone.utc)
+        # Assume UTC if no timezone info, then convert to HA timezone
+        utc_dt = datetime.fromisoformat(dt_string).replace(tzinfo=timezone.utc)
+        return utc_dt.astimezone(ha_tz)
         
     except (ValueError, TypeError) as e:
         _LOGGER.warning(f"Failed to parse datetime '{dt_string}': {e}")
@@ -87,16 +105,17 @@ def calculate_battery_charge_time(
     needed_wh = (needed_percent / 100.0) * total_capacity_wh
     return needed_wh / charge_power_w
 
-def get_current_price_data(price_data: List[Dict], current_time: datetime = None) -> Optional[Dict]:
+def get_current_price_data(price_data: List[Dict], current_time: datetime = None, hass=None) -> Optional[Dict]:
     if not price_data:
         return None
     
     if current_time is None:
-        current_time = datetime.now(timezone.utc)
+        ha_tz = get_ha_timezone(hass)
+        current_time = datetime.now(ha_tz)
     
     for entry in price_data:
-        start_time = parse_datetime(entry.get('start', ''))
-        end_time = parse_datetime(entry.get('end', ''))
+        start_time = parse_datetime(entry.get('start', ''), hass)
+        end_time = parse_datetime(entry.get('end', ''), hass)
         
         if start_time and end_time and start_time <= current_time < end_time:
             return entry
@@ -111,7 +130,8 @@ def find_price_extremes(
     if not price_data:
         return []
     
-    current_time = datetime.now(timezone.utc)
+    ha_tz = get_ha_timezone()
+    current_time = datetime.now(ha_tz)
     cutoff_time = current_time + timedelta(hours=hours_ahead)
     
     filtered_data = []

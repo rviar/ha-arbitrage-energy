@@ -84,7 +84,10 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
         await self._subscribe_mqtt_topics()
         
     def _get_current_time_utc(self) -> datetime:
-        """Get current time in UTC considering HA's timezone."""
+        """Get current time in UTC considering HA's timezone. DEPRECATED - use HA timezone instead."""
+        # This method is kept for backward compatibility but should be replaced with HA timezone
+        _LOGGER.warning("_get_current_time_utc is deprecated, use HA timezone instead")
+        
         if hasattr(self.hass.config, 'time_zone'):
             try:
                 tz = zoneinfo.ZoneInfo(str(self.hass.config.time_zone))
@@ -96,19 +99,29 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
         return datetime.now(timezone.utc)
     
     def _find_current_price_entry(self, price_data: list) -> dict:
-        """Find the current price entry based on start/end timestamps."""
+        """Find the current price entry based on start/end timestamps using HA timezone."""
         if not price_data:
             return {}
-            
-        current_time = self._get_current_time_utc()
-        _LOGGER.debug(f"Looking for current price at {current_time}")
+        
+        # Import here to avoid circular imports
+        from .arbitrage.utils import parse_datetime, get_ha_timezone
+        
+        # Get current time in HA timezone 
+        ha_tz = get_ha_timezone(self.hass)
+        current_time = datetime.now(ha_tz)
+        _LOGGER.debug(f"Looking for current price at {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
         
         for entry in price_data:
             try:
-                start_time = datetime.fromisoformat(entry['start'].replace('Z', '+00:00'))
-                end_time = datetime.fromisoformat(entry['end'].replace('Z', '+00:00'))
+                # Parse using the unified function that converts to HA timezone
+                start_time = parse_datetime(entry.get('start', ''), self.hass)
+                end_time = parse_datetime(entry.get('end', ''), self.hass)
                 
-                _LOGGER.debug(f"Checking period {start_time} - {end_time}")
+                if not start_time or not end_time:
+                    _LOGGER.debug(f"Could not parse timestamps in entry: {entry}")
+                    continue
+                
+                _LOGGER.debug(f"Checking period {start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}")
                 
                 if start_time <= current_time < end_time:
                     _LOGGER.debug(f"Found current period: {entry}")
@@ -118,7 +131,7 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug(f"Invalid price entry format: {e}")
                 continue
         
-        _LOGGER.warning(f"No current price period found, using first entry if available")
+        _LOGGER.warning(f"No current price period found at {current_time.strftime('%H:%M')}, using first entry if available")
         return price_data[0] if price_data else {}
     
     def get_current_buy_price(self) -> float:

@@ -518,8 +518,16 @@ class ArbitrageOptimizer:
 
     def _is_current_time_window(self, time_string: str, tolerance_minutes: int = 30) -> bool:
         try:
-            window_time = datetime.fromisoformat(time_string.replace('Z', '+00:00'))
-            current_time = datetime.now(timezone.utc)
+            from .utils import parse_datetime, get_ha_timezone
+            
+            # Parse window time to HA timezone
+            window_time = parse_datetime(time_string, self.sensor_helper.hass)
+            if not window_time:
+                return False
+                
+            # Get current time in HA timezone
+            ha_tz = get_ha_timezone(self.sensor_helper.hass)
+            current_time = datetime.now(ha_tz)
             
             time_diff = abs((window_time - current_time).total_seconds() / 60)
             return time_diff <= tolerance_minutes

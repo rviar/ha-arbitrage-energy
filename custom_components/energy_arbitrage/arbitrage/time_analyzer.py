@@ -24,26 +24,34 @@ class PriceWindow:
     @property
     def is_current(self) -> bool:
         """True if window is happening now."""
-        now = datetime.now(timezone.utc)
+        from .utils import get_ha_timezone
+        ha_tz = get_ha_timezone()
+        now = datetime.now(ha_tz)
         # Use same logic as utils.get_current_price_data for consistency
         return self.start_time <= now < self.end_time
     
     @property
     def is_upcoming(self) -> bool:
         """True if window is in the future."""
-        now = datetime.now(timezone.utc)
+        from .utils import get_ha_timezone
+        ha_tz = get_ha_timezone()
+        now = datetime.now(ha_tz)
         return now < self.start_time
     
     @property
     def time_until_start(self) -> timedelta:
         """Time until window starts."""
-        now = datetime.now(timezone.utc)
+        from .utils import get_ha_timezone
+        ha_tz = get_ha_timezone()
+        now = datetime.now(ha_tz)
         return max(timedelta(0), self.start_time - now)
     
     @property
     def time_remaining(self) -> timedelta:
         """Time remaining in current window."""
-        now = datetime.now(timezone.utc)
+        from .utils import get_ha_timezone
+        ha_tz = get_ha_timezone()
+        now = datetime.now(ha_tz)
         if self.is_current:
             return max(timedelta(0), self.end_time - now)
         return timedelta(0)
@@ -71,6 +79,8 @@ class TimeWindowAnalyzer:
     def __init__(self, sensor_helper):
         self.sensor_helper = sensor_helper
         self._price_history = []  # Cache for price data analysis
+        # Get HA timezone from sensor helper
+        self.hass = getattr(sensor_helper, 'hass', None)
         
     def analyze_price_windows(self, price_data: Dict[str, Any], hours_ahead: int = 24) -> List[PriceWindow]:
         """Analyze price data to find optimal trading windows."""
@@ -85,8 +95,10 @@ class TimeWindowAnalyzer:
                 return []
             
             # Debug current time and data range
-            now = datetime.now(timezone.utc)
-            _LOGGER.debug(f"🕐 Current UTC time: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            from .utils import get_ha_timezone
+            ha_tz = get_ha_timezone(self.hass)
+            now = datetime.now(ha_tz)
+            _LOGGER.debug(f"🕐 Current HA time: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
             if buy_prices:
                 first_buy = buy_prices[0].get('start', 'unknown')
                 last_buy = buy_prices[-1].get('start', 'unknown')
@@ -133,14 +145,15 @@ class TimeWindowAnalyzer:
                 timestamp_str = price_point.get('start', '')    # 'start' instead of 'timestamp'
                 
                 # Parse timestamp using unified function
-                from .utils import parse_datetime
-                timestamp = parse_datetime(timestamp_str)
+                from .utils import parse_datetime, get_ha_timezone
+                timestamp = parse_datetime(timestamp_str, self.hass)
                 if not timestamp:
                     _LOGGER.warning(f"Failed to parse buy timestamp: {timestamp_str}")
                     continue
                 
                 # Skip past prices
-                now = datetime.now(timezone.utc)
+                ha_tz = get_ha_timezone(self.hass)
+                now = datetime.now(ha_tz)
                 if timestamp < now:
                     continue
                 
@@ -213,14 +226,15 @@ class TimeWindowAnalyzer:
                 timestamp_str = price_point.get('start', '')  # 'start' instead of 'timestamp'
                 
                 # Parse timestamp using unified function
-                from .utils import parse_datetime
-                timestamp = parse_datetime(timestamp_str)
+                from .utils import parse_datetime, get_ha_timezone
+                timestamp = parse_datetime(timestamp_str, self.hass)
                 if not timestamp:
                     _LOGGER.warning(f"Failed to parse sell timestamp: {timestamp_str}")
                     continue
                 
                 # Skip past prices
-                now = datetime.now(timezone.utc)
+                ha_tz = get_ha_timezone(self.hass)
+                now = datetime.now(ha_tz)
                 if timestamp < now:
                     continue
                 
@@ -277,7 +291,9 @@ class TimeWindowAnalyzer:
         duration = (window_data['end'] - window_data['start']).total_seconds() / 3600
         
         # Determine urgency based on timing and duration
-        now = datetime.now(timezone.utc)
+        from .utils import get_ha_timezone
+        ha_tz = get_ha_timezone()
+        now = datetime.now(ha_tz)
         time_until_start = (window_data['start'] - now).total_seconds() / 3600
         
         if time_until_start <= 1:
@@ -302,7 +318,9 @@ class TimeWindowAnalyzer:
         duration = (window_data['end'] - window_data['start']).total_seconds() / 3600
         
         # Determine urgency based on timing and duration
-        now = datetime.now(timezone.utc)
+        from .utils import get_ha_timezone
+        ha_tz = get_ha_timezone()
+        now = datetime.now(ha_tz)
         time_until_start = (window_data['start'] - now).total_seconds() / 3600
         
         if time_until_start <= 1:

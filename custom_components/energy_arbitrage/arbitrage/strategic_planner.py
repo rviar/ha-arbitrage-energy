@@ -133,10 +133,15 @@ class StrategicPlanner:
             risk_assessment = self._assess_plan_risk(operations, energy_balances)
             
             # Create the plan
+            # Use HA timezone for strategic planning
+            from .utils import get_ha_timezone
+            ha_tz = get_ha_timezone(getattr(self.sensor_helper, 'hass', None))
+            now = datetime.now(ha_tz)
+            
             plan = StrategicPlan(
-                plan_id=f"plan_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
-                created_at=datetime.now(timezone.utc),
-                valid_until=datetime.now(timezone.utc) + timedelta(hours=planning_horizon_hours),
+                plan_id=f"plan_{now.strftime('%Y%m%d_%H%M%S')}",
+                created_at=now,
+                valid_until=now + timedelta(hours=planning_horizon_hours),
                 operations=operations,
                 expected_profit=expected_profit,
                 risk_assessment=risk_assessment,
