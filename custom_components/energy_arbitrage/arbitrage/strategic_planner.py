@@ -103,7 +103,8 @@ class StrategicPlanner:
                                 battery_capacity_wh: float,
                                 max_power_w: float,
                                 price_data: Dict[str, Any],
-                                planning_horizon_hours: int = 48) -> StrategicPlan:
+                                planning_horizon_hours: int = 48,
+                                currency: str = "PLN") -> StrategicPlan:
         """Create a comprehensive strategic plan."""
         
         try:
@@ -162,7 +163,7 @@ class StrategicPlanner:
             if len(self._plan_history) > 5:
                 self._plan_history = self._plan_history[-5:]
             
-            _LOGGER.info(f"🎯 Strategic plan created: {scenario} ({len(operations)} operations, profit: €{expected_profit:.2f})")
+            _LOGGER.info(f"🎯 Strategic plan created: {scenario} ({len(operations)} operations, profit: {currency} {expected_profit:.2f})")
             
             return plan
             
@@ -367,7 +368,7 @@ class StrategicPlanner:
                         expected_price=window.price,
                         confidence=window.confidence * 0.9,  # Slightly lower confidence for optimal operations
                         priority=3,
-                        reason=f"Surplus selling: {window_energy:.0f}Wh at good price €{window.price:.3f}",
+                        reason=f"Surplus selling: {window_energy:.0f}Wh at good price {currency} {window.price:.3f}",
                         dependencies=[],
                         alternatives=[]
                     )
@@ -406,7 +407,7 @@ class StrategicPlanner:
                         expected_price=window.price,
                         confidence=window.confidence * 0.9,
                         priority=3,
-                        reason=f"Deficit charging: {window_energy:.0f}Wh at low price €{window.price:.3f}",
+                        reason=f"Deficit charging: {window_energy:.0f}Wh at low price {currency} {window.price:.3f}",
                         dependencies=[],
                         alternatives=[]
                     )
@@ -467,7 +468,7 @@ class StrategicPlanner:
                     expected_price=window.price,
                     confidence=window.confidence * 0.8,  # Lower confidence for opportunistic
                     priority=4,
-                    reason=f"Opportunistic buy: {energy:.0f}Wh at €{window.price:.3f}",
+                    reason=f"Opportunistic buy: {energy:.0f}Wh at {currency} {window.price:.3f}",
                     dependencies=[],
                     alternatives=[]
                 )
@@ -490,7 +491,7 @@ class StrategicPlanner:
                         expected_price=window.price,
                         confidence=window.confidence * 0.8,
                         priority=4,
-                        reason=f"Opportunistic sell: {energy:.0f}Wh at €{window.price:.3f}",
+                        reason=f"Opportunistic sell: {energy:.0f}Wh at {currency} {window.price:.3f}",
                         dependencies=[],
                         alternatives=[]
                     )

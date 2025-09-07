@@ -269,8 +269,12 @@ class ArbitrageOptimizer:
             )
             
             if should_update_plan:
+                # Get configured currency
+                from ..const import CONF_CURRENCY, DEFAULT_CURRENCY
+                currency = self.coordinator.config.get(CONF_CURRENCY, DEFAULT_CURRENCY)
+                
                 strategic_plan = self.strategic_planner.create_comprehensive_plan(
-                    battery_level, battery_capacity, max_battery_power, data.get("price_data", {}), 48
+                    battery_level, battery_capacity, max_battery_power, data.get("price_data", {}), 48, currency
                 )
                 self._last_plan_update = now
                 _LOGGER.info(f"🎯 Strategic plan updated: {strategic_plan.scenario} ({len(strategic_plan.operations)} operations)")

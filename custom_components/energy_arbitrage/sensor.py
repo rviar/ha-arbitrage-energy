@@ -535,7 +535,7 @@ class EnergyArbitrageEnergyForecastSensor(EnergyArbitrageBaseSensor):
             # Get battery strategy
             from .arbitrage.utils import safe_float
             battery_level = safe_float(self.hass.states.get(self.coordinator.config.get('battery_level_sensor')))
-            battery_capacity = self.coordinator.data.get("battery_capacity", 15000)
+        battery_capacity = self.coordinator.data.get("battery_capacity", 15000)
             strategy = predictor.assess_battery_strategy(battery_level, battery_capacity)
             
             return {
@@ -660,7 +660,7 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
                 "created_at": current_plan.created_at.strftime("%Y-%m-%d %H:%M:%S UTC"),
                 "valid_until": current_plan.valid_until.strftime("%Y-%m-%d %H:%M:%S UTC"),
                 "total_operations": len(current_plan.operations),
-                "expected_profit": f"€{current_plan.expected_profit:.2f}",
+                "expected_profit": f"{self.currency} {current_plan.expected_profit:.2f}",
                 "risk_assessment": current_plan.risk_assessment,
                 "confidence": f"{current_plan.confidence*100:.0f}%",
                 "has_fallback": current_plan.fallback_plan is not None
@@ -673,7 +673,7 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
                     attributes[f"active_op_{i+1}_type"] = op.operation_type.value
                     attributes[f"active_op_{i+1}_energy"] = f"{op.target_energy_wh:.0f}Wh"
                     attributes[f"active_op_{i+1}_power"] = f"{op.target_power_w:.0f}W"
-                    attributes[f"active_op_{i+1}_price"] = f"€{op.expected_price:.4f}"
+                    attributes[f"active_op_{i+1}_price"] = f"{self.currency} {op.expected_price:.4f}"
                     attributes[f"active_op_{i+1}_end_time"] = op.end_time.strftime("%H:%M")
                     attributes[f"active_op_{i+1}_reason"] = op.reason
                     attributes[f"active_op_{i+1}_priority"] = op.priority
@@ -686,7 +686,7 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
                     attributes[f"upcoming_op_{i+1}_type"] = op.operation_type.value
                     attributes[f"upcoming_op_{i+1}_energy"] = f"{op.target_energy_wh:.0f}Wh"
                     attributes[f"upcoming_op_{i+1}_power"] = f"{op.target_power_w:.0f}W"
-                    attributes[f"upcoming_op_{i+1}_price"] = f"€{op.expected_price:.4f}"
+                    attributes[f"upcoming_op_{i+1}_price"] = f"{self.currency} {op.expected_price:.4f}"
                     attributes[f"upcoming_op_{i+1}_start_time"] = op.start_time.strftime("%H:%M")
                     attributes[f"upcoming_op_{i+1}_time_until"] = f"{time_until:.0f}min"
                     attributes[f"upcoming_op_{i+1}_reason"] = op.reason
@@ -700,7 +700,7 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
                     "next_operation_type": next_op.operation_type.value,
                     "next_operation_energy": f"{next_op.target_energy_wh:.0f}Wh",
                     "next_operation_power": f"{next_op.target_power_w:.0f}W",
-                    "next_operation_price": f"€{next_op.expected_price:.4f}",
+                    "next_operation_price": f"{self.currency} {next_op.expected_price:.4f}",
                     "next_operation_start": next_op.start_time.strftime("%Y-%m-%d %H:%M"),
                     "next_operation_hours_until": f"{time_until:.1f}h",
                     "next_operation_reason": next_op.reason,
