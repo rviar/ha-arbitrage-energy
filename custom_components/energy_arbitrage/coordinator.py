@@ -95,9 +95,13 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
             )
             
             self._mqtt_unsubs = [buy_unsub, sell_unsub]
-            _LOGGER.info(f"Subscribed to MQTT topics: {buy_topic}, {sell_topic}")
+            _LOGGER.info(f"✅ Subscribed to MQTT topics:")
+            _LOGGER.info(f"   📊 BUY:  {buy_topic}")
+            _LOGGER.info(f"   💰 SELL: {sell_topic}")
         except Exception as e:
-            _LOGGER.error(f"Failed to subscribe to MQTT topics: {e}")
+            _LOGGER.error(f"❌ Failed to subscribe to MQTT topics: {e}")
+            _LOGGER.error(f"   BUY topic: {buy_topic}")  
+            _LOGGER.error(f"   SELL topic: {sell_topic}")
 
     @callback
     def _handle_buy_price_message(self, message):
@@ -119,19 +123,22 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
     @callback
     def _handle_sell_price_message(self, message):
         try:
+            _LOGGER.info(f"🔥 SELL PRICE MESSAGE RECEIVED! Topic: {message.topic}")
             _LOGGER.debug(f"Raw sell price message payload: {message.payload}")
             data = json.loads(message.payload)
-            _LOGGER.debug(f"Parsed sell price data type: {type(data)}, length: {len(data) if isinstance(data, list) else 'N/A'}")
+            _LOGGER.info(f"✅ Parsed sell price data: type={type(data)}, length={len(data) if isinstance(data, list) else 'N/A'}")
             if isinstance(data, list) and len(data) > 0:
-                _LOGGER.debug(f"First sell price entry: {data[0]}")
+                _LOGGER.info(f"First sell price entry: {data[0]}")
             
             self.price_data["sell_prices"] = data
             self.price_data["last_updated"] = datetime.now()
-            _LOGGER.debug(f"Stored sell prices: {len(data)} entries")
+            _LOGGER.info(f"✅ Stored sell prices: {len(data)} entries")
             # Trigger sensor update with fresh data
             self.hass.async_create_task(self.async_request_refresh())
         except Exception as e:
-            _LOGGER.error(f"Error parsing sell price message: {e}")
+            _LOGGER.error(f"❌ Error parsing sell price message: {e}")
+            _LOGGER.error(f"Message topic: {message.topic}")
+            _LOGGER.error(f"Message payload: {message.payload}")
 
     async def _async_update_data(self) -> Dict[str, Any]:
         try:
