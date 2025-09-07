@@ -30,9 +30,6 @@ async def async_setup_entry(
         EnergyArbitrageROISensor(coordinator, entry),
         EnergyArbitrageStatusSensor(coordinator, entry),
         
-        # 📊 Financial tracking
-        EnergyArbitrageTodayProfitSensor(coordinator, entry),
-        EnergyArbitrageMonthlyProfitSensor(coordinator, entry),
         
         # 💰 Current pricing
         EnergyArbitrageCurrentBuyPriceSensor(coordinator, entry),
@@ -220,81 +217,7 @@ class EnergyArbitrageStatusSensor(EnergyArbitrageBaseSensor):
         return attrs
 
 
-class EnergyArbitrageTodayProfitSensor(EnergyArbitrageBaseSensor):
-    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry, "today_profit")
-        self._attr_name = "Today Profit"
-        self._attr_state_class = SensorStateClass.TOTAL
-        currency = self.currency
-        self._attr_native_unit_of_measurement = currency
-        self._attr_icon = "mdi:currency-usd"
-
-    @property
-    def native_value(self) -> float:
-        if not self.coordinator.data:
-            return 0.0
-        
-        # TODO: Implement profit tracking logic
-        # This would require storing profit data in coordinator
-        decision = self.coordinator.data.get("decision", {})
-        current_profit = decision.get("profit_forecast", 0.0)
-        
-        return round(current_profit, 2)
-
-    @property
-    def native_unit_of_measurement(self) -> str:
-        return self.currency
-
-    @property
-    def extra_state_attributes(self) -> dict:
-        if not self.coordinator.data:
-            return {}
-        
-        decision = self.coordinator.data.get("decision", {})
-        return {
-            "last_action": decision.get("action", "hold"),
-            "last_profit": decision.get("profit_forecast", 0.0),
-            "actions_today": 0,  # TODO: Implement action counting
-            "source": "arbitrage_decisions"
-        }
-
-
-class EnergyArbitrageMonthlyProfitSensor(EnergyArbitrageBaseSensor):
-    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry, "monthly_profit")
-        self._attr_name = "Monthly Profit"
-        self._attr_state_class = SensorStateClass.TOTAL
-        currency = self.currency
-        self._attr_native_unit_of_measurement = currency
-        self._attr_icon = "mdi:chart-line"
-
-    @property
-    def native_value(self) -> float:
-        if not self.coordinator.data:
-            return 0.0
-        
-        # TODO: Implement monthly profit tracking
-        # This would require persistent storage of profit history
-        return 0.0
-
-    @property
-    def native_unit_of_measurement(self) -> str:
-        return self.currency
-
-    @property
-    def extra_state_attributes(self) -> dict:
-        if not self.coordinator.data:
-            return {}
-        
-        return {
-            "days_active": 0,  # TODO: Implement day counting
-            "total_actions": 0,  # TODO: Implement action counting  
-            "average_daily_profit": 0.0,  # TODO: Calculate average
-            "source": "profit_history"
-        }
-
-
-# Input Data Sensors for Arbitrage Algorithm
+# DELETED: TodayProfitSensor was just a duplicate of profit_forecast
 
 class EnergyArbitrageCurrentBuyPriceSensor(EnergyArbitrageBaseSensor):
     def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
@@ -310,19 +233,95 @@ class EnergyArbitrageCurrentBuyPriceSensor(EnergyArbitrageBaseSensor):
         if not self.coordinator.data:
             return 0.0
         
-        price_data = self.coordinator.data.get('price_data', {})
-        buy_prices = price_data.get('buy_prices', [])
+        # Get buy price from MQTT data
+        price_data = self.coordinator.data.get("price_data", {})
+        buy_prices = price_data.get("buy_prices", [])
         
-        if not buy_prices:
+        if buy_prices and len(buy_prices) > 0:
+            # Use the first (current) price
+            current_price = buy_prices[0].get("price", 0.0)
+            return round(current_price, 4)
+            
+        return 0.0
+
+    @property
+    def native_unit_of_measurement(self) -> str:
+        return self.currency
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        if not self.coordinator.data:
+            return {}
+        
+        price_data = self.coordinator.data.get("price_data", {})
+        buy_prices = price_data.get("buy_prices", [])
+        
+        attrs = {
+            "data_source": "mqtt_energy_forecast",
+            "update_time": price_data.get("last_updated", "unknown"),
+            "prices_count": len(buy_prices)
+        }
+        
+        if buy_prices:
+            attrs["next_price"] = buy_prices[1].get("price", 0.0) if len(buy_prices) > 1 else None
+            attrs["current_timestamp"] = buy_prices[0].get("timestamp", "unknown")
+        
+        return attrs
+
+
+# DELETED: MonthlyProfitSensor - was a stub returning 0.0
+
+class EnergyArbitrageCurrentSellPriceSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "current_sell_price")
+        self._attr_name = "Current Sell Price"
+        self._attr_state_class = SensorStateClass.TOTAL
+        currency = self.currency
+        self._attr_native_unit_of_measurement = currency
+        self._attr_icon = "mdi:currency-eur"
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data:
             return 0.0
         
-        from datetime import datetime, timezone
-        from .arbitrage.utils import get_current_price_data
+        # Get sell price from MQTT data
+        price_data = self.coordinator.data.get("price_data", {})
+        sell_prices = price_data.get("sell_prices", [])
         
-        current_time = datetime.now(timezone.utc)
-        current_buy = get_current_price_data(buy_prices, current_time)
+        if sell_prices and len(sell_prices) > 0:
+            # Use the first (current) price
+            current_price = sell_prices[0].get("price", 0.0)
+            return round(current_price, 4)
+            
+        return 0.0
+
+    @property
+    def native_unit_of_measurement(self) -> str:
+        return self.currency
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        if not self.coordinator.data:
+            return {}
         
-        return round(current_buy.get('value', 0), 4) if current_buy else 0.0
+        price_data = self.coordinator.data.get("price_data", {})
+        sell_prices = price_data.get("sell_prices", [])
+        
+        attrs = {
+            "data_source": "mqtt_energy_forecast",
+            "update_time": price_data.get("last_updated", "unknown"),
+            "prices_count": len(sell_prices)
+        }
+        
+        if sell_prices:
+            attrs["next_price"] = sell_prices[1].get("price", 0.0) if len(sell_prices) > 1 else None
+            attrs["current_timestamp"] = sell_prices[0].get("timestamp", "unknown")
+        
+        return attrs
+
+
+# Profit sensors deleted - today was duplicate, monthly was stub
 
 
 class EnergyArbitrageCurrentSellPriceSensor(EnergyArbitrageBaseSensor):
