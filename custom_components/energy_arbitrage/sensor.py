@@ -203,7 +203,7 @@ class EnergyArbitrageCurrentBuyPriceSensor(EnergyArbitrageBaseSensor):
         
         if buy_prices and len(buy_prices) > 0:
             # Use the first (current) price
-            current_price = buy_prices[0].get("value", 0.0)  # 'value' instead of 'price'
+            current_price = buy_prices[0].get("value", 0.0) or 0.0  # Handle None values
             return round(current_price, 4)
             
         return 0.0
@@ -239,7 +239,7 @@ class EnergyArbitrageCurrentSellPriceSensor(EnergyArbitrageBaseSensor):
     def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "current_sell_price")
         self._attr_name = "Current Sell Price"
-        self._attr_state_class = SensorStateClass.TOTAL
+        self._attr_state_class = SensorStateClass.MEASUREMENT
         currency = self.currency
         self._attr_native_unit_of_measurement = currency
         self._attr_icon = "mdi:currency-eur"
@@ -255,7 +255,7 @@ class EnergyArbitrageCurrentSellPriceSensor(EnergyArbitrageBaseSensor):
         
         if sell_prices and len(sell_prices) > 0:
             # Use the first (current) price
-            current_price = sell_prices[0].get("value", 0.0)  # 'value' instead of 'price'
+            current_price = sell_prices[0].get("value", 0.0) or 0.0  # Handle None values
             return round(current_price, 4)
             
         return 0.0
@@ -283,37 +283,6 @@ class EnergyArbitrageCurrentSellPriceSensor(EnergyArbitrageBaseSensor):
             attrs["current_timestamp"] = sell_prices[0].get("start", "unknown")  # 'start'
         
         return attrs
-
-
-# Profit sensors deleted - today was duplicate, monthly was stub
-
-
-class EnergyArbitrageCurrentSellPriceSensor(EnergyArbitrageBaseSensor):
-    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry, "current_sell_price")
-        self._attr_name = "Current Sell Price"
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        currency = self.currency
-        self._attr_native_unit_of_measurement = currency
-        self._attr_icon = "mdi:currency-eur"
-
-    @property
-    def native_value(self) -> float:
-        if not self.coordinator.data:
-            return 0.0
-        
-        price_data = self.coordinator.data.get('price_data', {})
-        sell_prices = price_data.get('sell_prices', [])
-        
-        if not sell_prices:
-            return 0.0
-        
-        # Use first (current) price directly
-        if sell_prices and len(sell_prices) > 0:
-            current_price = sell_prices[0].get("value", 0.0)
-            return round(current_price, 4)
-            
-        return 0.0
 
 
 class EnergyArbitrageBatteryLevelSensor(EnergyArbitrageBaseSensor):
