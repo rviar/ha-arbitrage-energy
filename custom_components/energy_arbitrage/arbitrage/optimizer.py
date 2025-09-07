@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional, Tuple
 
 from .sensor_data_helper import SensorDataHelper
 from .predictor import EnergyBalancePredictor
+from .time_analyzer import TimeWindowAnalyzer
 from .utils import (
     safe_float, calculate_available_battery_capacity, 
     get_current_price_data, find_price_extremes,
@@ -17,6 +18,7 @@ class ArbitrageOptimizer:
         self.coordinator = coordinator
         self.sensor_helper = SensorDataHelper(coordinator.hass, coordinator.entry.entry_id, coordinator)
         self.energy_predictor = EnergyBalancePredictor(self.sensor_helper)
+        self.time_analyzer = TimeWindowAnalyzer(self.sensor_helper)
 
     async def calculate_optimal_action(self, data: Dict[str, Any]) -> Dict[str, Any]:
         try:
@@ -225,40 +227,122 @@ class ArbitrageOptimizer:
             energy_strategy = {'recommendation': 'hold', 'urgency': 'low'}
             energy_situation = 'unknown'
         
-        # 🎯 PREDICTIVE DECISION MAKING
+        # 🕐 TIME WINDOW ANALYSIS - NEW!
+        try:
+            price_windows = self.time_analyzer.analyze_price_windows(data.get("price_data", {}), 24)
+            price_situation = self.time_analyzer.get_current_price_situation(price_windows)
+            
+            _LOGGER.info(f"⏰ Price windows found: {len(price_windows)} opportunities")
+            _LOGGER.info(f"⚡ Current situation: {price_situation.get('time_pressure', 'low')} time pressure")
+            
+        except Exception as e:
+            _LOGGER.warning(f"Time window analysis failed: {e}")
+            price_windows = []
+            price_situation = {'time_pressure': 'low', 'current_opportunities': 0}
         
-        # Strategy-based decisions with price validation
+        # 🎯 TIME-AWARE PREDICTIVE DECISION MAKING
+        
+        # Check for immediate time-sensitive opportunities
+        if price_situation.get('time_pressure') == 'high' and price_situation.get('immediate_action'):
+            immediate = price_situation['immediate_action']
+            
+            if immediate['action'] == 'buy' and self.sensor_helper.is_battery_charging_viable():
+                # Immediate buy opportunity ending soon
+                if best_opportunity and best_opportunity.get('is_immediate_buy'):
+                    charge_power = min(max_battery_power, surplus_power if surplus_power > 0 else max_battery_power)
+                    return {
+                        "action": "charge_arbitrage",
+                        "reason": f"⏰ TIME CRITICAL: Buy window ending in {immediate['time_remaining']:.1f}h (Price: {immediate['price']:.3f})",
+                        "target_power": charge_power,
+                        "target_battery_level": min(95, battery_level + 20),
+                        "profit_forecast": best_opportunity.get('net_profit_per_kwh', 0) * (charge_power / 1000),
+                        "opportunity": best_opportunity,
+                        "strategy": "time_critical"
+                    }
+                    
+            elif immediate['action'] == 'sell' and available_battery > 1000:
+                # Immediate sell opportunity ending soon
+                if best_opportunity and best_opportunity.get('is_immediate_sell'):
+                    discharge_power = min(max_battery_power, available_battery / immediate['time_remaining'])
+                    return {
+                        "action": "sell_arbitrage", 
+                        "reason": f"⏰ TIME CRITICAL: Sell window ending in {immediate['time_remaining']:.1f}h (Price: {immediate['price']:.3f})",
+                        "target_power": -discharge_power,
+                        "target_battery_level": max(min_reserve, battery_level - 15),
+                        "profit_forecast": best_opportunity.get('net_profit_per_kwh', 0) * (discharge_power / 1000),
+                        "opportunity": best_opportunity,
+                        "strategy": "time_critical"
+                    }
+        
+        # Strategy-based decisions with time window validation
         if energy_strategy['recommendation'] == 'charge_aggressive' and energy_strategy['urgency'] == 'high':
-            # High urgency charging - accept lower margins
-            if (best_opportunity and best_opportunity.get('is_immediate_buy') and 
-                best_opportunity['roi_percent'] >= min_arbitrage_margin * 0.7):  # Accept 70% of normal margin
+            # High urgency charging - plan operation if time allows
+            if best_opportunity and best_opportunity.get('is_immediate_buy'):
                 
-                charge_power = min(max_battery_power, surplus_power if surplus_power > 0 else max_battery_power)
-                return {
-                    "action": "charge_arbitrage",
-                    "reason": f"⚡ PREDICTIVE: {energy_strategy['reason']} (ROI: {best_opportunity['roi_percent']:.1f}%)",
-                    "target_power": charge_power,
-                    "target_battery_level": energy_strategy['target_battery_level'],
-                    "profit_forecast": best_opportunity['net_profit_per_kwh'] * (charge_power / 1000),
-                    "opportunity": best_opportunity,
-                    "strategy": energy_strategy['recommendation']
-                }
+                # Check if we have enough time to charge what we need
+                target_energy = (energy_strategy['target_battery_level'] - battery_level) / 100 * battery_capacity
+                planned_operation = self.time_analyzer.plan_battery_operation(
+                    target_energy, 'charge', price_windows, max_battery_power
+                )
+                
+                if planned_operation and planned_operation.feasible:
+                    # We can complete the planned operation
+                    return {
+                        "action": "charge_arbitrage",
+                        "reason": f"⚡ PLANNED: {energy_strategy['reason']} (Time: {planned_operation.duration_hours:.1f}h, ROI: {best_opportunity['roi_percent']:.1f}%)",
+                        "target_power": planned_operation.target_power_w,
+                        "target_battery_level": energy_strategy['target_battery_level'],
+                        "profit_forecast": best_opportunity['net_profit_per_kwh'] * (planned_operation.target_power_w / 1000),
+                        "opportunity": best_opportunity,
+                        "strategy": f"{energy_strategy['recommendation']}_planned",
+                        "completion_time": planned_operation.completion_time.isoformat()
+                    }
+                elif best_opportunity['roi_percent'] >= min_arbitrage_margin * 0.7:
+                    # Fallback to immediate charging with reduced margin
+                    charge_power = min(max_battery_power, surplus_power if surplus_power > 0 else max_battery_power)
+                    return {
+                        "action": "charge_arbitrage",
+                        "reason": f"⚡ IMMEDIATE: Limited time, charge now (ROI: {best_opportunity['roi_percent']:.1f}%)",
+                        "target_power": charge_power,
+                        "target_battery_level": min(95, battery_level + 15),  # Conservative target
+                        "profit_forecast": best_opportunity['net_profit_per_kwh'] * (charge_power / 1000),
+                        "opportunity": best_opportunity,
+                        "strategy": f"{energy_strategy['recommendation']}_immediate"
+                    }
         
         elif energy_strategy['recommendation'] == 'charge_moderate':
-            # Moderate charging - normal margins  
-            if (best_opportunity and best_opportunity.get('is_immediate_buy') and 
-                best_opportunity['roi_percent'] >= min_arbitrage_margin):
+            # Moderate charging with time planning
+            if best_opportunity and best_opportunity.get('is_immediate_buy') and best_opportunity['roi_percent'] >= min_arbitrage_margin:
                 
-                charge_power = min(max_battery_power, surplus_power if surplus_power > 0 else max_battery_power)
-                return {
-                    "action": "charge_arbitrage",
-                    "reason": f"📊 PREDICTIVE: {energy_strategy['reason']} (ROI: {best_opportunity['roi_percent']:.1f}%)",
-                    "target_power": charge_power,
-                    "target_battery_level": energy_strategy['target_battery_level'],
-                    "profit_forecast": best_opportunity['net_profit_per_kwh'] * (charge_power / 1000),
-                    "opportunity": best_opportunity,
-                    "strategy": energy_strategy['recommendation']
-                }
+                # Plan the operation if time permits
+                target_energy = (energy_strategy['target_battery_level'] - battery_level) / 100 * battery_capacity
+                planned_operation = self.time_analyzer.plan_battery_operation(
+                    target_energy, 'charge', price_windows, max_battery_power
+                )
+                
+                if planned_operation and planned_operation.feasible:
+                    return {
+                        "action": "charge_arbitrage",
+                        "reason": f"📊 PLANNED: {energy_strategy['reason']} (Time: {planned_operation.duration_hours:.1f}h, ROI: {best_opportunity['roi_percent']:.1f}%)",
+                        "target_power": planned_operation.target_power_w,
+                        "target_battery_level": energy_strategy['target_battery_level'],
+                        "profit_forecast": best_opportunity['net_profit_per_kwh'] * (planned_operation.target_power_w / 1000),
+                        "opportunity": best_opportunity,
+                        "strategy": f"{energy_strategy['recommendation']}_planned",
+                        "completion_time": planned_operation.completion_time.isoformat()
+                    }
+                else:
+                    # Standard charging if planning fails
+                    charge_power = min(max_battery_power, surplus_power if surplus_power > 0 else max_battery_power)
+                    return {
+                        "action": "charge_arbitrage",
+                        "reason": f"📊 STANDARD: {energy_strategy['reason']} (ROI: {best_opportunity['roi_percent']:.1f}%)",
+                        "target_power": charge_power,
+                        "target_battery_level": energy_strategy['target_battery_level'],
+                        "profit_forecast": best_opportunity['net_profit_per_kwh'] * (charge_power / 1000),
+                        "opportunity": best_opportunity,
+                        "strategy": energy_strategy['recommendation']
+                    }
         
         elif energy_strategy['recommendation'] in ['sell_aggressive', 'sell_partial']:
             # Strategic selling
@@ -315,7 +399,12 @@ class ArbitrageOptimizer:
                 "strategy": "traditional"
             }
         # Default: Hold position with predictive insight
-        hold_reason = "🔄 PREDICTIVE HOLD: " + energy_strategy.get('reason', 'No beneficial action identified')
+        next_window_info = ""
+        if price_situation.get('next_opportunity'):
+            next_opp = price_situation['next_opportunity']
+            next_window_info = f" Next: {next_opp['action']} in {next_opp['time_until_start']:.1f}h"
+        
+        hold_reason = f"🔄 PREDICTIVE HOLD: {energy_strategy.get('reason', 'No beneficial action identified')}{next_window_info}"
         
         return {
             "action": "hold",
@@ -326,7 +415,10 @@ class ArbitrageOptimizer:
             "next_opportunity": best_opportunity,
             "energy_situation": energy_situation,
             "strategy": energy_strategy['recommendation'],
-            "confidence": energy_strategy.get('confidence', 0.5)
+            "confidence": energy_strategy.get('confidence', 0.5),
+            "time_pressure": price_situation.get('time_pressure', 'low'),
+            "price_windows_count": len(price_windows),
+            "next_window": price_situation.get('next_opportunity')
         }
 
     def _is_current_time_window(self, time_string: str, tolerance_minutes: int = 30) -> bool:

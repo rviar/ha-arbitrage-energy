@@ -55,6 +55,7 @@ async def async_setup_entry(
         EnergyArbitragePVForecastTomorrowSensor(coordinator, entry),
         EnergyArbitrageAvailableBatteryCapacitySensor(coordinator, entry),
         EnergyArbitrageEnergyForecastSensor(coordinator, entry),
+        EnergyArbitragePriceWindowsSensor(coordinator, entry),
         EnergyArbitrageNetConsumptionSensor(coordinator, entry),
         EnergyArbitrageSurplusPowerSensor(coordinator, entry),
         
@@ -1356,6 +1357,129 @@ class EnergyArbitrageEnergyForecastSensor(EnergyArbitrageBaseSensor):
                 # Status
                 "forecast_status": "active" if balances['today'].confidence > 0.5 else "limited"
             }
+            
+        except Exception as e:
+            return {
+                "error": str(e),
+                "status": "unavailable"
+            }
+
+
+class EnergyArbitragePriceWindowsSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "price_windows")
+        self._attr_name = "Price Windows"
+        self._attr_icon = "mdi:clock-time-four-outline"
+        self._attr_state_class = None
+
+    @property
+    def native_value(self) -> str:
+        if not self.coordinator.data:
+            return "no_data"
+        
+        try:
+            from .arbitrage.time_analyzer import TimeWindowAnalyzer
+            from .arbitrage.sensor_data_helper import SensorDataHelper
+            
+            sensor_helper = SensorDataHelper(self.hass, self.coordinator.entry.entry_id, self.coordinator)
+            time_analyzer = TimeWindowAnalyzer(sensor_helper)
+            
+            # Analyze price windows
+            price_data = self.coordinator.data.get("price_data", {})
+            price_windows = time_analyzer.analyze_price_windows(price_data, 24)
+            
+            if not price_windows:
+                return "no_windows"
+            
+            # Get current situation
+            price_situation = time_analyzer.get_current_price_situation(price_windows)
+            
+            if price_situation.get('current_opportunities', 0) > 0:
+                return "active_opportunity"
+            elif price_situation.get('upcoming_opportunities', 0) > 0:
+                return "upcoming_opportunity"
+            else:
+                return "monitoring"
+                
+        except Exception as e:
+            return "error"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        if not self.coordinator.data:
+            return {}
+        
+        try:
+            from .arbitrage.time_analyzer import TimeWindowAnalyzer
+            from .arbitrage.sensor_data_helper import SensorDataHelper
+            
+            sensor_helper = SensorDataHelper(self.hass, self.coordinator.entry.entry_id, self.coordinator)
+            time_analyzer = TimeWindowAnalyzer(sensor_helper)
+            
+            # Analyze price windows  
+            price_data = self.coordinator.data.get("price_data", {})
+            price_windows = time_analyzer.analyze_price_windows(price_data, 24)
+            price_situation = time_analyzer.get_current_price_situation(price_windows)
+            
+            attributes = {
+                "total_windows": len(price_windows),
+                "current_opportunities": price_situation.get('current_opportunities', 0),
+                "upcoming_opportunities": price_situation.get('upcoming_opportunities', 0),
+                "time_pressure": price_situation.get('time_pressure', 'low'),
+            }
+            
+            # Current opportunity details
+            if price_situation.get('immediate_action'):
+                immediate = price_situation['immediate_action']
+                attributes.update({
+                    "current_action": immediate['action'],
+                    "current_price": f"{immediate['price']:.4f}",
+                    "current_urgency": immediate['urgency'],
+                    "time_remaining": f"{immediate['time_remaining']:.1f}h"
+                })
+            
+            # Next opportunity details  
+            if price_situation.get('next_opportunity'):
+                next_opp = price_situation['next_opportunity']
+                attributes.update({
+                    "next_action": next_opp['action'],
+                    "next_price": f"{next_opp['price']:.4f}",
+                    "next_urgency": next_opp['urgency'],
+                    "time_until_start": f"{next_opp['time_until_start']:.1f}h",
+                    "next_duration": f"{next_opp['duration']:.1f}h"
+                })
+            
+            # Window details (up to 5 most relevant)
+            buy_windows = [w for w in price_windows if w.action == 'buy'][:3]
+            sell_windows = [w for w in price_windows if w.action == 'sell'][:3]
+            
+            for i, window in enumerate(buy_windows):
+                attributes[f"buy_window_{i+1}_start"] = window.start_time.strftime("%H:%M")
+                attributes[f"buy_window_{i+1}_duration"] = f"{window.duration_hours:.1f}h"
+                attributes[f"buy_window_{i+1}_price"] = f"{window.price:.4f}"
+                attributes[f"buy_window_{i+1}_urgency"] = window.urgency
+                
+                if window.is_current:
+                    attributes[f"buy_window_{i+1}_status"] = "active"
+                elif window.is_upcoming:
+                    attributes[f"buy_window_{i+1}_status"] = "upcoming"
+                else:
+                    attributes[f"buy_window_{i+1}_status"] = "past"
+            
+            for i, window in enumerate(sell_windows):
+                attributes[f"sell_window_{i+1}_start"] = window.start_time.strftime("%H:%M")
+                attributes[f"sell_window_{i+1}_duration"] = f"{window.duration_hours:.1f}h"
+                attributes[f"sell_window_{i+1}_price"] = f"{window.price:.4f}"
+                attributes[f"sell_window_{i+1}_urgency"] = window.urgency
+                
+                if window.is_current:
+                    attributes[f"sell_window_{i+1}_status"] = "active"
+                elif window.is_upcoming:
+                    attributes[f"sell_window_{i+1}_status"] = "upcoming"
+                else:
+                    attributes[f"sell_window_{i+1}_status"] = "past"
+            
+            return attributes
             
         except Exception as e:
             return {
