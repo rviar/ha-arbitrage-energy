@@ -39,12 +39,25 @@ def safe_int(state, default: int = 0) -> int:
         return default
 
 def parse_datetime(dt_string: str) -> Optional[datetime]:
+    """Parse datetime string with proper timezone handling."""
     try:
+        if not dt_string:
+            return None
+            
+        # Handle UTC 'Z' suffix
         if dt_string.endswith('Z'):
+            # Remove Z and explicitly set UTC timezone
             return datetime.fromisoformat(dt_string[:-1]).replace(tzinfo=timezone.utc)
-        else:
+        
+        # Handle explicit timezone offset (like +00:00)
+        if '+' in dt_string or dt_string.count('-') >= 3:  # ISO format with timezone
             return datetime.fromisoformat(dt_string)
-    except (ValueError, TypeError):
+        
+        # Assume UTC if no timezone info
+        return datetime.fromisoformat(dt_string).replace(tzinfo=timezone.utc)
+        
+    except (ValueError, TypeError) as e:
+        _LOGGER.warning(f"Failed to parse datetime '{dt_string}': {e}")
         return None
 
 def calculate_battery_capacity_wh(level_percent: float, total_capacity_wh: float) -> float:

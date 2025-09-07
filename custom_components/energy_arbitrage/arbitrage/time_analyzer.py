@@ -25,7 +25,8 @@ class PriceWindow:
     def is_current(self) -> bool:
         """True if window is happening now."""
         now = datetime.now(timezone.utc)
-        return self.start_time <= now <= self.end_time
+        # Use same logic as utils.get_current_price_data for consistency
+        return self.start_time <= now < self.end_time
     
     @property
     def is_upcoming(self) -> bool:
@@ -83,6 +84,18 @@ class TimeWindowAnalyzer:
                 _LOGGER.debug(f"Available price_data keys: {list(price_data.keys())}")
                 return []
             
+            # Debug current time and data range
+            now = datetime.now(timezone.utc)
+            _LOGGER.debug(f"🕐 Current UTC time: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            if buy_prices:
+                first_buy = buy_prices[0].get('start', 'unknown')
+                last_buy = buy_prices[-1].get('start', 'unknown')
+                _LOGGER.debug(f"📊 Buy data range: {first_buy} to {last_buy}")
+            if sell_prices:
+                first_sell = sell_prices[0].get('start', 'unknown')
+                last_sell = sell_prices[-1].get('start', 'unknown')
+                _LOGGER.debug(f"💰 Sell data range: {first_sell} to {last_sell}")
+            
             # Find buy windows (low prices)
             buy_windows = self._find_low_price_windows(buy_prices, hours_ahead)
             
@@ -119,10 +132,11 @@ class TimeWindowAnalyzer:
                 price = price_point.get('value', float('inf'))  # 'value' instead of 'price'
                 timestamp_str = price_point.get('start', '')    # 'start' instead of 'timestamp'
                 
-                # Parse timestamp
-                if 'T' in timestamp_str:
-                    timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-                else:
+                # Parse timestamp using unified function
+                from .utils import parse_datetime
+                timestamp = parse_datetime(timestamp_str)
+                if not timestamp:
+                    _LOGGER.warning(f"Failed to parse buy timestamp: {timestamp_str}")
                     continue
                 
                 # Skip past prices
@@ -198,10 +212,11 @@ class TimeWindowAnalyzer:
                 price = price_point.get('value', 0)          # 'value' instead of 'price'
                 timestamp_str = price_point.get('start', '')  # 'start' instead of 'timestamp'
                 
-                # Parse timestamp
-                if 'T' in timestamp_str:
-                    timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-                else:
+                # Parse timestamp using unified function
+                from .utils import parse_datetime
+                timestamp = parse_datetime(timestamp_str)
+                if not timestamp:
+                    _LOGGER.warning(f"Failed to parse sell timestamp: {timestamp_str}")
                     continue
                 
                 # Skip past prices
