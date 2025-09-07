@@ -65,15 +65,14 @@ class ArbitrageOptimizer:
         load_power = self.sensor_helper.get_load_power()
         grid_power = self.sensor_helper.get_grid_power()
         
-        # Get derived values from sensors
-        # Calculate derived values directly
+        # Get configuration from sensors FIRST
+        battery_capacity = self.sensor_helper.get_battery_capacity()
+        min_reserve = self.sensor_helper.get_min_battery_reserve()
+        
+        # Calculate derived values using configuration
         surplus_power = max(0, pv_power - load_power)  # Positive when PV > Load
         net_consumption = load_power - pv_power        # Net consumption after PV
         available_battery_wh = calculate_available_battery_capacity(battery_level, battery_capacity, min_reserve)
-        
-        # Get configuration from sensors
-        battery_capacity = self.sensor_helper.get_battery_capacity()
-        min_reserve = self.sensor_helper.get_min_battery_reserve()
         
         # Calculate battery power from grid power (approximation)
         # Negative = charging, positive = discharging
