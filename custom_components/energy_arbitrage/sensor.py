@@ -203,7 +203,7 @@ class EnergyArbitrageCurrentBuyPriceSensor(EnergyArbitrageBaseSensor):
         
         if buy_prices and len(buy_prices) > 0:
             # Use the first (current) price
-            current_price = buy_prices[0].get("price", 0.0)
+            current_price = buy_prices[0].get("value", 0.0)  # 'value' instead of 'price'
             return round(current_price, 4)
             
         return 0.0
@@ -227,8 +227,8 @@ class EnergyArbitrageCurrentBuyPriceSensor(EnergyArbitrageBaseSensor):
         }
         
         if buy_prices:
-            attrs["next_price"] = buy_prices[1].get("price", 0.0) if len(buy_prices) > 1 else None
-            attrs["current_timestamp"] = buy_prices[0].get("timestamp", "unknown")
+            attrs["next_price"] = buy_prices[1].get("value", 0.0) if len(buy_prices) > 1 else None  # 'value'
+            attrs["current_timestamp"] = buy_prices[0].get("start", "unknown")  # 'start'
         
         return attrs
 
@@ -255,7 +255,7 @@ class EnergyArbitrageCurrentSellPriceSensor(EnergyArbitrageBaseSensor):
         
         if sell_prices and len(sell_prices) > 0:
             # Use the first (current) price
-            current_price = sell_prices[0].get("price", 0.0)
+            current_price = sell_prices[0].get("value", 0.0)  # 'value' instead of 'price'
             return round(current_price, 4)
             
         return 0.0
@@ -279,8 +279,8 @@ class EnergyArbitrageCurrentSellPriceSensor(EnergyArbitrageBaseSensor):
         }
         
         if sell_prices:
-            attrs["next_price"] = sell_prices[1].get("price", 0.0) if len(sell_prices) > 1 else None
-            attrs["current_timestamp"] = sell_prices[0].get("timestamp", "unknown")
+            attrs["next_price"] = sell_prices[1].get("value", 0.0) if len(sell_prices) > 1 else None  # 'value'  
+            attrs["current_timestamp"] = sell_prices[0].get("start", "unknown")  # 'start'
         
         return attrs
 
@@ -308,13 +308,12 @@ class EnergyArbitrageCurrentSellPriceSensor(EnergyArbitrageBaseSensor):
         if not sell_prices:
             return 0.0
         
-        from datetime import datetime, timezone
-        from .arbitrage.utils import get_current_price_data
-        
-        current_time = datetime.now(timezone.utc)
-        current_sell = get_current_price_data(sell_prices, current_time)
-        
-        return round(current_sell.get('value', 0), 4) if current_sell else 0.0
+        # Use first (current) price directly
+        if sell_prices and len(sell_prices) > 0:
+            current_price = sell_prices[0].get("value", 0.0)
+            return round(current_price, 4)
+            
+        return 0.0
 
 
 class EnergyArbitrageBatteryLevelSensor(EnergyArbitrageBaseSensor):
@@ -796,6 +795,12 @@ class EnergyArbitragePriceWindowsSensor(EnergyArbitrageBaseSensor):
             
             # Analyze price windows
             price_data = self.coordinator.data.get("price_data", {})
+            _LOGGER.debug(f"PriceWindowsSensor: price_data keys={list(price_data.keys())}")
+            if "buy_prices" in price_data:
+                _LOGGER.debug(f"PriceWindowsSensor: buy_prices count={len(price_data['buy_prices'])}")
+            if "sell_prices" in price_data:
+                _LOGGER.debug(f"PriceWindowsSensor: sell_prices count={len(price_data['sell_prices'])}")
+            
             price_windows = time_analyzer.analyze_price_windows(price_data, 24)
             
             if not price_windows:

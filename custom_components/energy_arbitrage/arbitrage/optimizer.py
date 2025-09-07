@@ -105,8 +105,8 @@ class ArbitrageOptimizer:
         sell_prices = price_data.get("sell_prices", [])
         
         # Find current extremes (fallback for traditional arbitrage)
-        min_buy_price_24h = min([p.get('price', float('inf')) for p in buy_prices[:24]], default=0.0)
-        max_sell_price_24h = max([p.get('price', 0) for p in sell_prices[:24]], default=0.0)
+        min_buy_price_24h = min([p.get('value', float('inf')) for p in buy_prices[:24]], default=0.0)  # 'value'
+        max_sell_price_24h = max([p.get('value', 0) for p in sell_prices[:24]], default=0.0)        # 'value'
         
         # Get configuration from sensors
         min_margin = self.sensor_helper.get_min_arbitrage_margin()

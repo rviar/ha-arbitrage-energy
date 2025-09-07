@@ -79,7 +79,8 @@ class TimeWindowAnalyzer:
             sell_prices = price_data.get("sell_prices", [])
             
             if not buy_prices or not sell_prices:
-                _LOGGER.warning("No price data available for time window analysis")
+                _LOGGER.warning(f"Price data missing: buy_prices={len(buy_prices) if buy_prices else 0}, sell_prices={len(sell_prices) if sell_prices else 0}")
+                _LOGGER.debug(f"Available price_data keys: {list(price_data.keys())}")
                 return []
             
             # Find buy windows (low prices)
@@ -104,10 +105,10 @@ class TimeWindowAnalyzer:
         if not buy_prices:
             return []
         
-        # Sort prices to find bottom quartile
-        sorted_prices = sorted(buy_prices, key=lambda p: p.get('price', float('inf')))
+        # Sort prices to find bottom quartile  
+        sorted_prices = sorted(buy_prices, key=lambda p: p.get('value', float('inf')))
         quartile_size = max(1, len(sorted_prices) // 4)
-        low_price_threshold = sorted_prices[quartile_size - 1].get('price', 0)
+        low_price_threshold = sorted_prices[quartile_size - 1].get('value', 0)
         
         # Find consecutive low-price periods
         windows = []
@@ -115,8 +116,8 @@ class TimeWindowAnalyzer:
         
         for price_point in buy_prices:
             try:
-                price = price_point.get('price', float('inf'))
-                timestamp_str = price_point.get('timestamp', '')
+                price = price_point.get('value', float('inf'))  # 'value' instead of 'price'
+                timestamp_str = price_point.get('start', '')    # 'start' instead of 'timestamp'
                 
                 # Parse timestamp
                 if 'T' in timestamp_str:
@@ -184,9 +185,9 @@ class TimeWindowAnalyzer:
             return []
         
         # Sort prices to find top quartile
-        sorted_prices = sorted(sell_prices, key=lambda p: p.get('price', 0), reverse=True)
+        sorted_prices = sorted(sell_prices, key=lambda p: p.get('value', 0), reverse=True)
         quartile_size = max(1, len(sorted_prices) // 4)
-        high_price_threshold = sorted_prices[quartile_size - 1].get('price', float('inf'))
+        high_price_threshold = sorted_prices[quartile_size - 1].get('value', float('inf'))
         
         # Find consecutive high-price periods
         windows = []
@@ -194,8 +195,8 @@ class TimeWindowAnalyzer:
         
         for price_point in sell_prices:
             try:
-                price = price_point.get('price', 0)
-                timestamp_str = price_point.get('timestamp', '')
+                price = price_point.get('value', 0)          # 'value' instead of 'price'
+                timestamp_str = price_point.get('start', '')  # 'start' instead of 'timestamp'
                 
                 # Parse timestamp
                 if 'T' in timestamp_str:
