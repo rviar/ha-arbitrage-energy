@@ -158,17 +158,12 @@ energy_arbitrage.manual_override           # Ручное управление �
    ```yaml
    sensor.energy_arbitrage_current_buy_price      # Текущая цена покупки
    sensor.energy_arbitrage_current_sell_price     # Текущая цена продажи
-   sensor.energy_arbitrage_min_buy_price_24h      # Минимальная цена покупки за 24ч
-   sensor.energy_arbitrage_max_sell_price_24h     # Максимальная цена продажи за 24ч
    sensor.energy_arbitrage_input_battery_level    # Уровень заряда батареи
    sensor.energy_arbitrage_input_pv_power         # Текущая мощность PV
    sensor.energy_arbitrage_input_load_power       # Текущая мощность нагрузки
    sensor.energy_arbitrage_input_grid_power       # Текущая мощность сети
    sensor.energy_arbitrage_pv_forecast_today      # Прогноз PV на сегодня
    sensor.energy_arbitrage_pv_forecast_tomorrow   # Прогноз PV на завтра
-   sensor.energy_arbitrage_available_battery_capacity  # Доступная емкость батареи
-   sensor.energy_arbitrage_net_consumption        # Чистое потребление (нагрузка - PV)
-   sensor.energy_arbitrage_surplus_power          # Избыток мощности (PV - нагрузка)
    ```
 
    **Configuration Parameter Sensors (параметры конфигурации):**
@@ -191,8 +186,6 @@ energy_arbitrage.manual_override           # Ручное управление �
    sensor.energy_arbitrage_profit_forecast        # Прогноз прибыли
    sensor.energy_arbitrage_battery_target         # Целевой уровень батареи
    sensor.energy_arbitrage_roi                    # Ожидаемый ROI
-   sensor.energy_arbitrage_next_buy_window        # Следующее окно покупки
-   sensor.energy_arbitrage_next_sell_window       # Следующее окно продажи
    ```
 
 4. **Преимущества такой архитектуры:**

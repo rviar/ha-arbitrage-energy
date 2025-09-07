@@ -118,8 +118,6 @@
 
 ### 📊 Мониторинг и аналитика
 
-- `sensor.energy_arbitrage_next_buy_window` - Следующее окно для покупки
-- `sensor.energy_arbitrage_next_sell_window` - Следующее окно для продажи
 - `sensor.energy_arbitrage_today_profit` - Прибыль за сегодня
 - `sensor.energy_arbitrage_monthly_profit` - Прибыль за месяц
 - `sensor.energy_arbitrage_current_buy_price` - Текущая цена покупки

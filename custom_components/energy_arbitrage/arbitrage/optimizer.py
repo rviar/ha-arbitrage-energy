@@ -61,9 +61,10 @@ class ArbitrageOptimizer:
         grid_power = self.sensor_helper.get_grid_power()
         
         # Get derived values from sensors
-        surplus_power = self.sensor_helper.get_surplus_power()
-        net_consumption = self.sensor_helper.get_net_consumption()
-        available_battery_wh = self.sensor_helper.get_available_battery_capacity()
+        # Calculate derived values directly
+        surplus_power = max(0, pv_power - load_power)  # Positive when PV > Load
+        net_consumption = load_power - pv_power        # Net consumption after PV
+        available_battery_wh = calculate_available_battery_capacity(battery_level, battery_capacity, min_reserve)
         
         # Get configuration from sensors
         battery_capacity = self.sensor_helper.get_battery_capacity()
@@ -93,8 +94,14 @@ class ArbitrageOptimizer:
         # Get current prices from sensors
         current_buy_price = self.sensor_helper.get_current_buy_price()
         current_sell_price = self.sensor_helper.get_current_sell_price()
-        min_buy_price_24h = self.sensor_helper.get_min_buy_price_24h()
-        max_sell_price_24h = self.sensor_helper.get_max_sell_price_24h()
+        # Get price extremes from MQTT data (will be replaced by price_windows analysis)
+        price_data = data.get("price_data", {})
+        buy_prices = price_data.get("buy_prices", [])
+        sell_prices = price_data.get("sell_prices", [])
+        
+        # Find current extremes (fallback for traditional arbitrage)
+        min_buy_price_24h = min([p.get('price', float('inf')) for p in buy_prices[:24]], default=0.0)
+        max_sell_price_24h = max([p.get('price', 0) for p in sell_prices[:24]], default=0.0)
         
         # Get configuration from sensors
         min_margin = self.sensor_helper.get_min_arbitrage_margin()

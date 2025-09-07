@@ -56,13 +56,6 @@ class SensorDataHelper:
         """Get current electricity sell price."""
         return self._get_sensor_value("current_sell_price") or 0.0
     
-    def get_min_buy_price_24h(self) -> float:
-        """Get minimum buy price in next 24h."""
-        return self._get_sensor_value("min_buy_price_24h") or 0.0
-    
-    def get_max_sell_price_24h(self) -> float:
-        """Get maximum sell price in next 24h."""
-        return self._get_sensor_value("max_sell_price_24h") or 0.0
     
     def get_battery_level(self) -> float:
         """Get current battery level in %."""
@@ -96,17 +89,6 @@ class SensorDataHelper:
         """Get detailed PV forecast for tomorrow."""
         return self._get_sensor_attributes("input_pv_forecast_tomorrow")
     
-    def get_available_battery_capacity(self) -> float:
-        """Get available battery capacity above reserve in Wh."""
-        return self._get_sensor_value("available_battery_capacity") or 0.0
-    
-    def get_net_consumption(self) -> float:
-        """Get net consumption (Load - PV) in W."""
-        return self._get_sensor_value("net_consumption") or 0.0
-    
-    def get_surplus_power(self) -> float:
-        """Get surplus power (PV - Load) in W."""
-        return self._get_sensor_value("surplus_power") or 0.0
     
     # Configuration Parameter from Number Entities
     
@@ -237,16 +219,9 @@ class SensorDataHelper:
             "pv_power": self.get_pv_power(),
             "load_power": self.get_load_power(),
             "grid_power": self.get_grid_power(),
-            "net_consumption": self.get_net_consumption(),
-            "surplus_power": self.get_surplus_power(),
-            "available_battery_capacity": self.get_available_battery_capacity(),
-            
             # Price information
             "current_buy_price": self.get_current_buy_price(),
             "current_sell_price": self.get_current_sell_price(),
-            "min_buy_price_24h": self.get_min_buy_price_24h(),
-            "max_sell_price_24h": self.get_max_sell_price_24h(),
-            "current_price_spread": self.get_current_price_spread(),
             "max_arbitrage_potential": self.get_max_arbitrage_potential(),
             
             # Configuration
@@ -277,7 +252,7 @@ class SensorDataHelper:
         _LOGGER.info(
             f"Prices: Buy {state['current_buy_price']:.4f}, "
             f"Sell {state['current_sell_price']:.4f}, "
-            f"Spread {state['current_price_spread']:.4f}"
+            f"Spread: {state['current_sell_price'] - state['current_buy_price']:.4f}"
         )
         
         _LOGGER.info(
