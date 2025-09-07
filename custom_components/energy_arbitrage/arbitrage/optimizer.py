@@ -328,8 +328,8 @@ class ArbitrageOptimizer:
                 'total_cycles': total_cycles
             }
         
-        # Check minimum depth for arbitrage (40% minimum battery level)
-        min_arbitrage_depth = 40.0  # Fixed at 40% for sensor-based logic
+        # Check minimum depth for arbitrage (configurable minimum battery level)
+        min_arbitrage_depth = self.sensor_helper.get_min_arbitrage_depth()
         if battery_level < min_arbitrage_depth:
             return {
                 'blocked': True,

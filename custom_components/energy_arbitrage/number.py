@@ -18,6 +18,7 @@ from .const import (
     CONF_MIN_BATTERY_RESERVE,
     CONF_MAX_BATTERY_POWER,
     CONF_BATTERY_CAPACITY,
+    CONF_MIN_ARBITRAGE_DEPTH,
     DEFAULT_MIN_ARBITRAGE_MARGIN,
     DEFAULT_PLANNING_HORIZON,
     DEFAULT_MAX_DAILY_CYCLES,
@@ -25,6 +26,7 @@ from .const import (
     DEFAULT_MIN_BATTERY_RESERVE,
     DEFAULT_MAX_BATTERY_POWER,
     DEFAULT_BATTERY_CAPACITY,
+    DEFAULT_MIN_ARBITRAGE_DEPTH,
 )
 from .coordinator import EnergyArbitrageCoordinator
 
@@ -45,6 +47,7 @@ async def async_setup_entry(
         EnergyArbitrageMinBatteryReserveNumber(coordinator, entry),
         EnergyArbitrageMaxBatteryPowerNumber(coordinator, entry),
         EnergyArbitrageBatteryCapacityNumber(coordinator, entry),
+        EnergyArbitrageMinArbitrageDepthNumber(coordinator, entry),
     ]
 
     async_add_entities(entities)
@@ -208,3 +211,21 @@ class EnergyArbitrageBatteryCapacityNumber(EnergyArbitrageBaseNumber):
         config = self._entry.data
         options = self._entry.options
         return int(options.get(self._config_key, config.get(self._config_key, DEFAULT_BATTERY_CAPACITY)))
+
+
+class EnergyArbitrageMinArbitrageDepthNumber(EnergyArbitrageBaseNumber):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, CONF_MIN_ARBITRAGE_DEPTH)
+        self._attr_name = "Min Arbitrage Depth"
+        self._attr_icon = "mdi:battery-arrow-down"
+        self._attr_native_min_value = 20
+        self._attr_native_max_value = 80
+        self._attr_native_step = 1
+        self._attr_native_unit_of_measurement = "%"
+        self._attr_mode = NumberMode.BOX
+
+    @property
+    def native_value(self) -> int:
+        config = self._entry.data
+        options = self._entry.options
+        return int(options.get(self._config_key, config.get(self._config_key, DEFAULT_MIN_ARBITRAGE_DEPTH)))

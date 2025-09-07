@@ -163,6 +163,12 @@ class SensorDataHelper:
             return self.coordinator.data.get("battery_capacity", 15000)
         return 15000
     
+    def get_min_arbitrage_depth(self) -> float:
+        """Get minimum arbitrage depth in % from coordinator data."""
+        if self.coordinator and self.coordinator.data:
+            return self.coordinator.data.get("min_arbitrage_depth", 40.0)
+        return 40.0
+    
     # Derived calculations
     
     def get_current_price_spread(self) -> float:
@@ -251,6 +257,7 @@ class SensorDataHelper:
             "min_battery_reserve": self.get_min_battery_reserve(),
             "max_battery_power": self.get_max_battery_power(),
             "battery_capacity": self.get_battery_capacity(),
+            "min_arbitrage_depth": self.get_min_arbitrage_depth(),
             
             # Status flags
             "can_charge": self.is_battery_charging_viable(),

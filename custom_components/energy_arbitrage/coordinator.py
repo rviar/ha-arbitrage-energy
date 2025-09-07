@@ -32,6 +32,7 @@ from .const import (
     CONF_PLANNING_HORIZON,
     CONF_UPDATE_INTERVAL,
     CONF_MIN_ARBITRAGE_MARGIN,
+    CONF_MIN_ARBITRAGE_DEPTH,
     CONF_SELF_CONSUMPTION_PRIORITY,
     DEFAULT_UPDATE_INTERVAL,
     WORK_MODE_EXPORT_FIRST,
@@ -196,12 +197,14 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
             max_power_entity = f"number.{DOMAIN}_max_battery_power"
             planning_horizon_entity = f"number.{DOMAIN}_planning_horizon"
             efficiency_entity = f"number.{DOMAIN}_battery_efficiency"
+            min_arbitrage_depth_entity = f"number.{DOMAIN}_min_arbitrage_depth"
             
             battery_capacity_state = self.hass.states.get(battery_capacity_entity)
             min_reserve_state = self.hass.states.get(min_reserve_entity)
             max_power_state = self.hass.states.get(max_power_entity)
             planning_horizon_state = self.hass.states.get(planning_horizon_entity)
             efficiency_state = self.hass.states.get(efficiency_entity)
+            min_arbitrage_depth_state = self.hass.states.get(min_arbitrage_depth_entity)
             
             # Use live values from number entities or fallback to config
             data["battery_capacity"] = safe_float(battery_capacity_state) or self.options.get(CONF_BATTERY_CAPACITY, self.config.get(CONF_BATTERY_CAPACITY, 15000))
@@ -209,6 +212,7 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
             data["max_battery_power"] = safe_float(max_power_state) or self.options.get(CONF_MAX_BATTERY_POWER, self.config.get(CONF_MAX_BATTERY_POWER, 5000.0))
             data["planning_horizon"] = safe_int(planning_horizon_state) or self.options.get(CONF_PLANNING_HORIZON, self.config.get(CONF_PLANNING_HORIZON, 24))
             data["battery_efficiency"] = safe_float(efficiency_state) or self.options.get(CONF_BATTERY_EFFICIENCY, self.config.get(CONF_BATTERY_EFFICIENCY, 90.0))
+            data["min_arbitrage_depth"] = safe_float(min_arbitrage_depth_state) or self.options.get(CONF_MIN_ARBITRAGE_DEPTH, self.config.get(CONF_MIN_ARBITRAGE_DEPTH, 40.0))
             
             data["price_data"] = self.price_data.copy()
             data["config"] = self.config
