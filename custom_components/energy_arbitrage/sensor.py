@@ -24,7 +24,6 @@ async def async_setup_entry(
 
     entities = [
         # 🎯 Core decision sensors  
-        EnergyArbitrageTargetPowerSensor(coordinator, entry),
         EnergyArbitrageProfitForecastSensor(coordinator, entry),
         EnergyArbitrageROISensor(coordinator, entry),
         EnergyArbitrageStatusSensor(coordinator, entry),
@@ -80,22 +79,6 @@ class EnergyArbitrageBaseSensor(CoordinatorEntity, SensorEntity):
 
 # DELETED: NextActionSensor - duplicated strategic_plan.current_recommendation
 
-class EnergyArbitrageTargetPowerSensor(EnergyArbitrageBaseSensor):
-    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry, "target_power")
-        self._attr_name = "Target Power"
-        self._attr_device_class = SensorDeviceClass.POWER
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = UnitOfPower.WATT
-        self._attr_icon = "mdi:flash"
-
-    @property
-    def native_value(self) -> float:
-        if not self.coordinator.data:
-            return 0.0
-        
-        decision = self.coordinator.data.get("decision", {})
-        return decision.get("target_power", 0.0)
 
 class EnergyArbitrageProfitForecastSensor(EnergyArbitrageBaseSensor):
     def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
@@ -552,7 +535,7 @@ class EnergyArbitrageEnergyForecastSensor(EnergyArbitrageBaseSensor):
             # Get battery strategy
             from .arbitrage.utils import safe_float
             battery_level = safe_float(self.hass.states.get(self.coordinator.config.get('battery_level_sensor')))
-            battery_capacity = self.coordinator.data.get("battery_capacity", 15000)
+        battery_capacity = self.coordinator.data.get("battery_capacity", 15000)
             strategy = predictor.assess_battery_strategy(battery_level, battery_capacity)
             
             return {
