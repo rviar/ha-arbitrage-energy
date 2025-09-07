@@ -237,42 +237,8 @@ class ArbitrageOptimizer:
                 "opportunity": best_opportunity
             }
         
-        # Priority 3: Store excess solar power
-        if surplus_power > 100:  # 100W threshold
-            if battery_level < 95:
-                charge_power = min(max_battery_power, surplus_power)
-                return {
-                    "action": "charge_solar",
-                    "reason": "Storing solar energy in battery",
-                    "target_power": charge_power,
-                    "target_battery_level": min(95, battery_level + 10),
-                    "profit_forecast": 0,
-                    "opportunity": None
-                }
-            else:
-                export_power = surplus_power
-                return {
-                    "action": "export_solar",
-                    "reason": "Exporting excess solar to grid",
-                    "target_power": export_power,
-                    "target_battery_level": battery_level,
-                    "profit_forecast": 0,
-                    "opportunity": None
-                }
-        
-        # Priority 4: Use battery to cover load deficit
-        net_consumption = current_state['net_consumption']
-        if net_consumption > 100 and available_battery > 500:  # 100W and 500Wh thresholds
-            discharge_power = min(max_battery_power, net_consumption, available_battery / 2)  # Wh / 2h = W
-            return {
-                "action": "discharge_load",
-                "reason": "Using battery to cover load",
-                "target_power": -discharge_power,
-                "target_battery_level": max(min_reserve, battery_level - 5),
-                "profit_forecast": 0,
-                "opportunity": None
-            }
-        
+        # Removed Priority 3 & 4: Inverter handles solar/load management automatically
+        # System focuses only on arbitrage opportunities
         # Default: Hold position
         return {
             "action": "hold",

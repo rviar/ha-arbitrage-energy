@@ -16,6 +16,8 @@ from .const import (
     CONF_GRID_POWER_SENSOR,
     CONF_WORK_MODE_SELECT,
     CONF_BATTERY_GRID_CHARGING_SWITCH,
+    CONF_TIME_OF_USE_SELECT,
+    CONF_EXPORT_SURPLUS_SWITCH,
     CONF_TODAY_BATTERY_CYCLES_SENSOR,
     CONF_TOTAL_BATTERY_CYCLES_SENSOR,
     CONF_MQTT_BUY_TOPIC,
@@ -83,6 +85,12 @@ DATA_SCHEMA_CONTROLS = vol.Schema({
         selector.EntitySelectorConfig(domain="select")
     ),
     vol.Required(CONF_BATTERY_GRID_CHARGING_SWITCH, default="switch.inverter_battery_grid_charging"): selector.EntitySelector(
+        selector.EntitySelectorConfig(domain="switch")
+    ),
+    vol.Required(CONF_TIME_OF_USE_SELECT, default="select.inverter_time_of_use"): selector.EntitySelector(
+        selector.EntitySelectorConfig(domain="select")
+    ),
+    vol.Required(CONF_EXPORT_SURPLUS_SWITCH, default="switch.inverter_export_surplus"): selector.EntitySelector(
         selector.EntitySelectorConfig(domain="switch")
     ),
     vol.Required(CONF_TODAY_BATTERY_CYCLES_SENSOR, default="sensor.inverter_today_battery_life_cycles"): selector.EntitySelector(

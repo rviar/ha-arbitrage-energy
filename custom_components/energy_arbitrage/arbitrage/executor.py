@@ -26,12 +26,7 @@ class ArbitrageExecutor:
                 success = await self._execute_sell_arbitrage(decision)
             elif action == "charge_arbitrage":
                 success = await self._execute_charge_arbitrage(decision)
-            elif action == "charge_solar":
-                success = await self._execute_charge_solar(decision)
-            elif action == "export_solar":
-                success = await self._execute_export_solar(decision)
-            elif action == "discharge_load":
-                success = await self._execute_discharge_load(decision)
+            # Removed: charge_solar, export_solar, discharge_load - handled by inverter automatically
             elif action == "hold":
                 success = await self._execute_hold(decision)
             else:
@@ -74,45 +69,46 @@ class ArbitrageExecutor:
             _LOGGER.error(f"Error executing charge arbitrage: {e}")
             return False
 
-    async def _execute_charge_solar(self, decision: Dict[str, Any]) -> bool:
-        try:
-            await self._set_work_mode(WORK_MODE_ZERO_EXPORT)
-            await self._set_grid_charging(False)
-            
-            _LOGGER.info(f"Charging from solar: target power {decision.get('target_power', 0)}W")
-            return True
-            
-        except Exception as e:
-            _LOGGER.error(f"Error executing solar charge: {e}")
-            return False
-
-    async def _execute_export_solar(self, decision: Dict[str, Any]) -> bool:
-        try:
-            await self._set_work_mode(WORK_MODE_EXPORT_FIRST)
-            await self._set_grid_charging(False)
-            
-            _LOGGER.info(f"Exporting solar: target power {decision.get('target_power', 0)}W")
-            return True
-            
-        except Exception as e:
-            _LOGGER.error(f"Error executing solar export: {e}")
-            return False
-
-    async def _execute_discharge_load(self, decision: Dict[str, Any]) -> bool:
-        try:
-            await self._set_work_mode(WORK_MODE_ZERO_EXPORT)
-            await self._set_grid_charging(False)
-            
-            _LOGGER.info(f"Discharging for load: target power {decision.get('target_power', 0)}W")
-            return True
-            
-        except Exception as e:
-            _LOGGER.error(f"Error executing discharge for load: {e}")
-            return False
+    # Removed methods: _execute_charge_solar, _execute_export_solar, _execute_discharge_load
+    # These operations are handled automatically by the inverter
 
     async def _execute_hold(self, decision: Dict[str, Any]) -> bool:
-        _LOGGER.debug("Holding current state")
-        return True
+        """Execute hold mode - set inverter to autonomous operation."""
+        try:
+            _LOGGER.info("Setting inverter to autonomous mode (hold)")
+            
+            # Set all hold mode parameters
+            tasks = []
+            
+            # 1. Set Time of Use to Enabled
+            tasks.append(self._set_time_of_use("Enabled"))
+            
+            # 2. Set Work Mode to Zero Export To Load
+            tasks.append(self._set_work_mode("Zero Export To Load"))
+            
+            # 3. Enable Export Surplus
+            tasks.append(self._set_export_surplus(True))
+            
+            # 4. Disable Grid Charging
+            tasks.append(self._set_grid_charging(False))
+            
+            # Execute all settings in parallel
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Check results
+            success_count = sum(1 for result in results if result is True)
+            total_count = len(results)
+            
+            if success_count == total_count:
+                _LOGGER.info("Successfully set inverter to hold mode")
+                return True
+            else:
+                _LOGGER.warning(f"Hold mode partially set: {success_count}/{total_count} settings successful")
+                return success_count > 0  # Return True if at least some settings succeeded
+                
+        except Exception as e:
+            _LOGGER.error(f"Error setting hold mode: {e}")
+            return False
 
     async def _set_work_mode(self, mode: str) -> bool:
         try:
@@ -183,6 +179,78 @@ class ArbitrageExecutor:
                 
         except Exception as e:
             _LOGGER.error(f"Error setting grid charging to {'on' if enable else 'off'}: {e}")
+            return False
+
+    async def _set_time_of_use(self, option: str) -> bool:
+        """Set Time of Use mode (select entity)."""
+        try:
+            entity_id = self.coordinator.config.get('time_of_use_select')
+            if not entity_id:
+                _LOGGER.error("Time of Use select entity not configured")
+                return False
+            
+            current_state = self.coordinator.hass.states.get(entity_id)
+            if current_state and current_state.state == option:
+                _LOGGER.debug(f"Time of Use already set to: {option}")
+                return True
+            
+            await self.coordinator.hass.services.async_call(
+                'select', 'select_option',
+                {
+                    'entity_id': entity_id,
+                    'option': option
+                }
+            )
+            
+            await asyncio.sleep(2)
+            
+            new_state = self.coordinator.hass.states.get(entity_id)
+            if new_state and new_state.state == option:
+                _LOGGER.info(f"Time of Use set to: {option}")
+                return True
+            else:
+                _LOGGER.error(f"Failed to verify Time of Use change to: {option}")
+                return False
+                
+        except Exception as e:
+            _LOGGER.error(f"Error setting Time of Use to {option}: {e}")
+            return False
+
+    async def _set_export_surplus(self, enable: bool) -> bool:
+        """Set export surplus switch."""
+        try:
+            entity_id = self.coordinator.config.get('export_surplus_switch')
+            if not entity_id:
+                _LOGGER.error("Export surplus switch entity not configured")
+                return False
+            
+            current_state = self.coordinator.hass.states.get(entity_id)
+            current_enabled = current_state and current_state.state == "on"
+            
+            if current_enabled == enable:
+                _LOGGER.debug(f"Export surplus already {'enabled' if enable else 'disabled'}")
+                return True
+            
+            service = "turn_on" if enable else "turn_off"
+            await self.coordinator.hass.services.async_call(
+                'switch', service,
+                {'entity_id': entity_id}
+            )
+            
+            await asyncio.sleep(2)
+            
+            new_state = self.coordinator.hass.states.get(entity_id)
+            new_enabled = new_state and new_state.state == "on"
+            
+            if new_enabled == enable:
+                _LOGGER.info(f"Export surplus {'enabled' if enable else 'disabled'}")
+                return True
+            else:
+                _LOGGER.error(f"Failed to verify export surplus state change")
+                return False
+                
+        except Exception as e:
+            _LOGGER.error(f"Error setting export surplus to {'on' if enable else 'off'}: {e}")
             return False
 
     async def enter_emergency_mode(self) -> bool:
