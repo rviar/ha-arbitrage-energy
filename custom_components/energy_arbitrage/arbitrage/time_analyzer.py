@@ -220,6 +220,15 @@ class TimeWindowAnalyzer:
         _LOGGER.debug(f"📊 SELL анализ: {len(sell_prices)} цен, топ {quartile_size} = {[p.get('value') for p in sorted_prices[:quartile_size]]}")
         _LOGGER.debug(f"💎 Высокий порог: {high_price_threshold:.4f}, фильтр: {high_price_threshold * 0.9:.4f}")
         
+        # 🎯 ДЕТАЛЬНАЯ ПРОВЕРКА ВРЕМЕНИ 19:00 CEST (17:00 UTC)
+        time_1900_entries = []
+        for p in sell_prices:
+            timestamp_str = p.get('start', '')
+            if '17:00:00' in timestamp_str:  # 17:00 UTC = 19:00 CEST
+                time_1900_entries.append(p)
+                price = p.get('value', 0)
+                _LOGGER.warning(f"🕐 19:00 CEST данные: {timestamp_str} → цена {price:.4f}")
+        
         # Специальная проверка на цену 1.85
         price_185_found = any(p.get('value', 0) == 1.85 for p in sell_prices)
         if price_185_found:
@@ -227,6 +236,11 @@ class TimeWindowAnalyzer:
             for p in sell_prices:
                 if p.get('value', 0) == 1.85:
                     _LOGGER.warning(f"🎯 Цена 1.85 в {p.get('start', 'unknown')} - в топ {quartile_size}? {1.85 in [pp.get('value') for pp in sorted_prices[:quartile_size]]}")
+        else:
+            _LOGGER.error(f"❌ ЦЕНА 1.85 НЕ НАЙДЕНА В ДАННЫХ! Проверьте MQTT данные.")
+            # Показать все цены выше 1.0 для диагностики
+            high_prices_debug = [(p.get('start', 'unknown'), p.get('value', 0)) for p in sell_prices if p.get('value', 0) > 1.0]
+            _LOGGER.error(f"📊 Высокие цены в данных: {high_prices_debug}")
         
         # Find consecutive high-price periods
         windows = []
