@@ -20,12 +20,13 @@ class PriceWindow:
     duration_hours: float         # Window duration in hours
     confidence: float             # Forecast confidence 0-1
     urgency: str                  # "low" | "medium" | "high"
+    hass: Any = None              # HA object for timezone
     
     @property
     def is_current(self) -> bool:
         """True if window is happening now."""
         from .utils import get_ha_timezone
-        ha_tz = get_ha_timezone()
+        ha_tz = get_ha_timezone(self.hass)
         now = datetime.now(ha_tz)
         # Use same logic as utils.get_current_price_data for consistency
         return self.start_time <= now < self.end_time
@@ -34,7 +35,7 @@ class PriceWindow:
     def is_upcoming(self) -> bool:
         """True if window is in the future."""
         from .utils import get_ha_timezone
-        ha_tz = get_ha_timezone()
+        ha_tz = get_ha_timezone(self.hass)
         now = datetime.now(ha_tz)
         return now < self.start_time
     
@@ -42,7 +43,7 @@ class PriceWindow:
     def time_until_start(self) -> timedelta:
         """Time until window starts."""
         from .utils import get_ha_timezone
-        ha_tz = get_ha_timezone()
+        ha_tz = get_ha_timezone(self.hass)
         now = datetime.now(ha_tz)
         return max(timedelta(0), self.start_time - now)
     
@@ -50,7 +51,7 @@ class PriceWindow:
     def time_remaining(self) -> timedelta:
         """Time remaining in current window."""
         from .utils import get_ha_timezone
-        ha_tz = get_ha_timezone()
+        ha_tz = get_ha_timezone(self.hass)
         now = datetime.now(ha_tz)
         if self.is_current:
             return max(timedelta(0), self.end_time - now)
@@ -317,7 +318,7 @@ class TimeWindowAnalyzer:
         
         # Determine urgency based on timing and duration
         from .utils import get_ha_timezone
-        ha_tz = get_ha_timezone()
+        ha_tz = get_ha_timezone(self.hass)
         now = datetime.now(ha_tz)
         time_until_start = (window_data['start'] - now).total_seconds() / 3600
         
@@ -335,7 +336,8 @@ class TimeWindowAnalyzer:
             price=window_data['price'],
             duration_hours=duration,
             confidence=0.8,  # High confidence for price data
-            urgency=urgency
+            urgency=urgency,
+            hass=self.hass
         )
     
     def _create_sell_window(self, window_data: Dict) -> PriceWindow:
@@ -344,7 +346,7 @@ class TimeWindowAnalyzer:
         
         # Determine urgency based on timing and duration
         from .utils import get_ha_timezone
-        ha_tz = get_ha_timezone()
+        ha_tz = get_ha_timezone(self.hass)
         now = datetime.now(ha_tz)
         time_until_start = (window_data['start'] - now).total_seconds() / 3600
         
@@ -362,7 +364,8 @@ class TimeWindowAnalyzer:
             price=window_data['price'],
             duration_hours=duration,
             confidence=0.8,  # High confidence for price data
-            urgency=urgency
+            urgency=urgency,
+            hass=self.hass
         )
     
     def plan_battery_operation(self, 
