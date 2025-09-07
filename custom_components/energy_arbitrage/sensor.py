@@ -24,7 +24,6 @@ async def async_setup_entry(
 
     entities = [
         # 🎯 Core decision sensors  
-        EnergyArbitrageNextActionSensor(coordinator, entry),
         EnergyArbitrageTargetPowerSensor(coordinator, entry),
         EnergyArbitrageProfitForecastSensor(coordinator, entry),
         EnergyArbitrageROISensor(coordinator, entry),
@@ -79,42 +78,7 @@ class EnergyArbitrageBaseSensor(CoordinatorEntity, SensorEntity):
             "sw_version": "1.0.0",
         }
 
-class EnergyArbitrageNextActionSensor(EnergyArbitrageBaseSensor):
-    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry, "next_action")
-        self._attr_name = "Next Action"
-        self._attr_icon = "mdi:lightning-bolt"
-
-    @property
-    def native_value(self) -> str:
-        if not self.coordinator.data:
-            return "unknown"
-        
-        decision = self.coordinator.data.get("decision", {})
-        return decision.get("action", "unknown")
-
-    @property
-    def extra_state_attributes(self) -> dict:
-        if not self.coordinator.data:
-            return {}
-        
-        decision = self.coordinator.data.get("decision", {})
-        opportunity = decision.get("opportunity")
-        
-        attrs = {
-            "reason": decision.get("reason", ""),
-            "target_power": decision.get("target_power", 0),
-            "profit_forecast": decision.get("profit_forecast", 0),
-        }
-        
-        if opportunity:
-            attrs.update({
-                "opportunity_roi": opportunity.get("roi_percent", 0),
-                "opportunity_buy_price": opportunity.get("buy_price", 0),
-                "opportunity_sell_price": opportunity.get("sell_price", 0),
-            })
-        
-        return attrs
+# DELETED: NextActionSensor - duplicated strategic_plan.current_recommendation
 
 class EnergyArbitrageTargetPowerSensor(EnergyArbitrageBaseSensor):
     def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:

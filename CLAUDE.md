@@ -62,7 +62,7 @@ custom_components/energy_arbitrage/
 ### 4. Создаваемые сенсоры:
 
 ```yaml
-sensor.energy_arbitrage_next_action        # Следующее действие (charge/discharge/hold)
+# DELETED: next_action - дублировал strategic_plan.current_recommendation
 sensor.energy_arbitrage_target_power       # Целевая мощность заряда/разряда
 sensor.energy_arbitrage_profit_forecast    # Прогноз прибыли за 24 часа
 sensor.energy_arbitrage_sell_window        # Начало следующего окна продажи
@@ -180,7 +180,6 @@ energy_arbitrage.manual_override           # Ручное управление �
    **Output/Decision Sensors (выходные данные решений):**
 
    ```yaml
-   sensor.energy_arbitrage_next_action            # Следующее действие
    sensor.energy_arbitrage_target_power           # Целевая мощность
    sensor.energy_arbitrage_profit_forecast        # Прогноз прибыли
    sensor.energy_arbitrage_roi                    # Ожидаемый ROI

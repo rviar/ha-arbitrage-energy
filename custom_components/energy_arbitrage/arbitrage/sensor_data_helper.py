@@ -153,14 +153,6 @@ class SensorDataHelper:
     
     # Derived calculations
     
-    def get_current_price_spread(self) -> float:
-        """Get current price spread (sell - buy)."""
-        return self.get_current_sell_price() - self.get_current_buy_price()
-    
-    def get_max_arbitrage_potential(self) -> float:
-        """Get maximum arbitrage potential in next 24h."""
-        return self.get_max_sell_price_24h() - self.get_min_buy_price_24h()
-    
     def is_battery_charging_viable(self) -> bool:
         """Check if battery has room for charging."""
         battery_level = self.get_battery_level()
@@ -222,7 +214,6 @@ class SensorDataHelper:
             # Price information
             "current_buy_price": self.get_current_buy_price(),
             "current_sell_price": self.get_current_sell_price(),
-            "max_arbitrage_potential": self.get_max_arbitrage_potential(),
             
             # Configuration
             "min_arbitrage_margin": self.get_min_arbitrage_margin(),

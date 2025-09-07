@@ -103,7 +103,6 @@
 
 ### Основные сенсоры
 
-- `sensor.energy_arbitrage_next_action` - Следующее действие системы
 - `sensor.energy_arbitrage_target_power` - Целевая мощность заряда/разряда
 - `sensor.energy_arbitrage_profit_forecast` - Прогноз прибыли (EUR)
 - `sensor.energy_arbitrage_roi` - Ожидаемая рентабельность (%)
@@ -366,7 +365,6 @@ type: entities
 title: Energy Arbitrage - Основное
 entities:
   - sensor.energy_arbitrage_status
-  - sensor.energy_arbitrage_next_action
   - sensor.energy_arbitrage_target_power
   - sensor.energy_arbitrage_profit_forecast
   - sensor.energy_arbitrage_roi
