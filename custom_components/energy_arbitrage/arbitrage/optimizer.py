@@ -5,6 +5,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from .sensor_data_helper import SensorDataHelper
 from .predictor import EnergyBalancePredictor
 from .time_analyzer import TimeWindowAnalyzer
+from .strategic_planner import StrategicPlanner
 from .utils import (
     safe_float, calculate_available_battery_capacity, 
     get_current_price_data, find_price_extremes,
@@ -19,6 +20,8 @@ class ArbitrageOptimizer:
         self.sensor_helper = SensorDataHelper(coordinator.hass, coordinator.entry.entry_id, coordinator)
         self.energy_predictor = EnergyBalancePredictor(self.sensor_helper)
         self.time_analyzer = TimeWindowAnalyzer(self.sensor_helper)
+        self.strategic_planner = StrategicPlanner(self.sensor_helper, self.energy_predictor, self.time_analyzer)
+        self._last_plan_update = None
 
     async def calculate_optimal_action(self, data: Dict[str, Any]) -> Dict[str, Any]:
         try:
@@ -240,7 +243,72 @@ class ArbitrageOptimizer:
             price_windows = []
             price_situation = {'time_pressure': 'low', 'current_opportunities': 0}
         
-        # 🎯 TIME-AWARE PREDICTIVE DECISION MAKING
+        # 🎯 STRATEGIC PLANNING - NEW! 
+        try:
+            # Update strategic plan every 30 minutes or when conditions change significantly
+            now = datetime.now(timezone.utc)
+            should_update_plan = (
+                self._last_plan_update is None or
+                (now - self._last_plan_update).total_seconds() > 1800 or  # 30 minutes
+                price_situation.get('time_pressure') == 'high'  # Urgent situations need fresh plans
+            )
+            
+            if should_update_plan:
+                strategic_plan = self.strategic_planner.create_comprehensive_plan(
+                    battery_level, battery_capacity, max_battery_power, data.get("price_data", {}), 48
+                )
+                self._last_plan_update = now
+                _LOGGER.info(f"🎯 Strategic plan updated: {strategic_plan.scenario} ({len(strategic_plan.operations)} operations)")
+            
+            # Get current strategic recommendation
+            strategic_recommendation = self.strategic_planner.get_current_recommendation()
+            
+            _LOGGER.info(f"🧭 Strategic status: {strategic_recommendation.get('plan_status', 'unknown')}")
+            _LOGGER.info(f"🎲 Strategic action: {strategic_recommendation.get('action', 'unknown')} - {strategic_recommendation.get('reason', 'No reason')}")
+            
+        except Exception as e:
+            _LOGGER.warning(f"Strategic planning failed: {e}")
+            strategic_recommendation = {
+                "action": "hold",
+                "reason": "Strategic planning unavailable",
+                "confidence": 0.3,
+                "plan_status": "error"
+            }
+        
+        # 🎯 STRATEGIC DECISION MAKING (HIGHEST PRIORITY)
+        
+        # Strategic planner takes precedence if it has high-confidence recommendations
+        if (strategic_recommendation.get('confidence', 0) >= 0.8 and 
+            strategic_recommendation.get('plan_status') in ['executing', 'waiting'] and
+            strategic_recommendation.get('action') != 'hold'):
+            
+            if strategic_recommendation['action'] == 'charge_arbitrage':
+                return {
+                    "action": "charge_arbitrage",
+                    "reason": strategic_recommendation['reason'],
+                    "target_power": strategic_recommendation.get('target_power', max_battery_power * 0.8),
+                    "target_battery_level": min(95, battery_level + 20),
+                    "profit_forecast": 0,  # Will be calculated by strategic planner
+                    "opportunity": {"strategic": True, "priority": strategic_recommendation.get('priority', 1)},
+                    "strategy": "strategic_plan",
+                    "plan_status": strategic_recommendation.get('plan_status'),
+                    "confidence": strategic_recommendation.get('confidence', 0.8)
+                }
+                
+            elif strategic_recommendation['action'] == 'sell_arbitrage':
+                return {
+                    "action": "sell_arbitrage",
+                    "reason": strategic_recommendation['reason'],
+                    "target_power": strategic_recommendation.get('target_power', -max_battery_power * 0.8),
+                    "target_battery_level": max(min_reserve, battery_level - 15),
+                    "profit_forecast": 0,  # Will be calculated by strategic planner
+                    "opportunity": {"strategic": True, "priority": strategic_recommendation.get('priority', 1)},
+                    "strategy": "strategic_plan",
+                    "plan_status": strategic_recommendation.get('plan_status'),
+                    "confidence": strategic_recommendation.get('confidence', 0.8)
+                }
+        
+        # 🎯 TIME-AWARE PREDICTIVE DECISION MAKING (FALLBACK)
         
         # Check for immediate time-sensitive opportunities
         if price_situation.get('time_pressure') == 'high' and price_situation.get('immediate_action'):
@@ -398,13 +466,23 @@ class ArbitrageOptimizer:
                 "opportunity": best_opportunity,
                 "strategy": "traditional"
             }
-        # Default: Hold position with predictive insight
-        next_window_info = ""
-        if price_situation.get('next_opportunity'):
+        # Default: Hold position with strategic insight
+        strategic_info = ""
+        if strategic_recommendation.get('plan_status') == 'waiting':
+            strategic_info = f" Strategic: {strategic_recommendation.get('reason', 'Planning')}"
+        elif price_situation.get('next_opportunity'):
             next_opp = price_situation['next_opportunity']
-            next_window_info = f" Next: {next_opp['action']} in {next_opp['time_until_start']:.1f}h"
+            strategic_info = f" Next: {next_opp['action']} in {next_opp['time_until_start']:.1f}h"
         
-        hold_reason = f"🔄 PREDICTIVE HOLD: {energy_strategy.get('reason', 'No beneficial action identified')}{next_window_info}"
+        # Choose the most informative hold reason
+        if strategic_recommendation.get('confidence', 0) > energy_strategy.get('confidence', 0):
+            hold_reason = f"🎯 STRATEGIC HOLD: {strategic_recommendation.get('reason', 'No strategic action')}{strategic_info}"
+            primary_confidence = strategic_recommendation.get('confidence', 0.5)
+            primary_strategy = "strategic"
+        else:
+            hold_reason = f"🔄 PREDICTIVE HOLD: {energy_strategy.get('reason', 'No beneficial action identified')}{strategic_info}"
+            primary_confidence = energy_strategy.get('confidence', 0.5)
+            primary_strategy = energy_strategy['recommendation']
         
         return {
             "action": "hold",
@@ -414,11 +492,13 @@ class ArbitrageOptimizer:
             "profit_forecast": sum([op['net_profit_per_kwh'] for op in opportunities[:3]]),
             "next_opportunity": best_opportunity,
             "energy_situation": energy_situation,
-            "strategy": energy_strategy['recommendation'],
-            "confidence": energy_strategy.get('confidence', 0.5),
+            "strategy": primary_strategy,
+            "confidence": primary_confidence,
             "time_pressure": price_situation.get('time_pressure', 'low'),
             "price_windows_count": len(price_windows),
-            "next_window": price_situation.get('next_opportunity')
+            "next_window": price_situation.get('next_opportunity'),
+            "strategic_status": strategic_recommendation.get('plan_status', 'no_plan'),
+            "strategic_confidence": strategic_recommendation.get('confidence', 0)
         }
 
     def _is_current_time_window(self, time_string: str, tolerance_minutes: int = 30) -> bool:

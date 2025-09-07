@@ -56,6 +56,7 @@ async def async_setup_entry(
         EnergyArbitrageAvailableBatteryCapacitySensor(coordinator, entry),
         EnergyArbitrageEnergyForecastSensor(coordinator, entry),
         EnergyArbitragePriceWindowsSensor(coordinator, entry),
+        EnergyArbitrageStrategicPlanSensor(coordinator, entry),
         EnergyArbitrageNetConsumptionSensor(coordinator, entry),
         EnergyArbitrageSurplusPowerSensor(coordinator, entry),
         
@@ -1357,6 +1358,166 @@ class EnergyArbitrageEnergyForecastSensor(EnergyArbitrageBaseSensor):
                 # Status
                 "forecast_status": "active" if balances['today'].confidence > 0.5 else "limited"
             }
+            
+        except Exception as e:
+            return {
+                "error": str(e),
+                "status": "unavailable"
+            }
+
+
+class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "strategic_plan")
+        self._attr_name = "Strategic Plan"
+        self._attr_icon = "mdi:strategy"
+        self._attr_state_class = None
+
+    @property
+    def native_value(self) -> str:
+        if not self.coordinator.data:
+            return "no_data"
+        
+        try:
+            from .arbitrage.strategic_planner import StrategicPlanner
+            from .arbitrage.sensor_data_helper import SensorDataHelper
+            from .arbitrage.predictor import EnergyBalancePredictor
+            from .arbitrage.time_analyzer import TimeWindowAnalyzer
+            
+            # Create components
+            sensor_helper = SensorDataHelper(self.hass, self.coordinator.entry.entry_id, self.coordinator)
+            energy_predictor = EnergyBalancePredictor(sensor_helper)
+            time_analyzer = TimeWindowAnalyzer(sensor_helper)
+            strategic_planner = StrategicPlanner(sensor_helper, energy_predictor, time_analyzer)
+            
+            # Get current plan
+            current_plan = strategic_planner.get_current_plan()
+            
+            if not current_plan:
+                return "no_active_plan"
+            
+            # Check plan status
+            active_operations = current_plan.active_operations
+            upcoming_operations = current_plan.upcoming_operations
+            
+            if active_operations:
+                return "executing"
+            elif upcoming_operations:
+                return "waiting"
+            elif current_plan.next_operation:
+                return "monitoring"
+            else:
+                return "completed"
+                
+        except Exception as e:
+            return "error"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        if not self.coordinator.data:
+            return {}
+        
+        try:
+            from .arbitrage.strategic_planner import StrategicPlanner
+            from .arbitrage.sensor_data_helper import SensorDataHelper
+            from .arbitrage.predictor import EnergyBalancePredictor
+            from .arbitrage.time_analyzer import TimeWindowAnalyzer
+            from datetime import datetime, timezone
+            
+            # Create components
+            sensor_helper = SensorDataHelper(self.hass, self.coordinator.entry.entry_id, self.coordinator)
+            energy_predictor = EnergyBalancePredictor(sensor_helper)
+            time_analyzer = TimeWindowAnalyzer(sensor_helper)
+            strategic_planner = StrategicPlanner(sensor_helper, energy_predictor, time_analyzer)
+            
+            # Get current plan
+            current_plan = strategic_planner.get_current_plan()
+            
+            if not current_plan:
+                return {
+                    "status": "no_plan",
+                    "reason": "No active strategic plan"
+                }
+            
+            now = datetime.now(timezone.utc)
+            
+            # Basic plan info
+            attributes = {
+                "plan_id": current_plan.plan_id,
+                "scenario": current_plan.scenario,
+                "created_at": current_plan.created_at.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                "valid_until": current_plan.valid_until.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                "total_operations": len(current_plan.operations),
+                "expected_profit": f"€{current_plan.expected_profit:.2f}",
+                "risk_assessment": current_plan.risk_assessment,
+                "confidence": f"{current_plan.confidence*100:.0f}%",
+                "has_fallback": current_plan.fallback_plan is not None
+            }
+            
+            # Active operations
+            active_operations = current_plan.active_operations
+            if active_operations:
+                for i, op in enumerate(active_operations[:2]):  # Show up to 2 active operations
+                    attributes[f"active_op_{i+1}_type"] = op.operation_type.value
+                    attributes[f"active_op_{i+1}_energy"] = f"{op.target_energy_wh:.0f}Wh"
+                    attributes[f"active_op_{i+1}_power"] = f"{op.target_power_w:.0f}W"
+                    attributes[f"active_op_{i+1}_price"] = f"€{op.expected_price:.4f}"
+                    attributes[f"active_op_{i+1}_end_time"] = op.end_time.strftime("%H:%M")
+                    attributes[f"active_op_{i+1}_reason"] = op.reason
+                    attributes[f"active_op_{i+1}_priority"] = op.priority
+            
+            # Upcoming operations
+            upcoming_operations = current_plan.upcoming_operations
+            if upcoming_operations:
+                for i, op in enumerate(upcoming_operations[:3]):  # Show up to 3 upcoming operations
+                    time_until = (op.start_time - now).total_seconds() / 60
+                    attributes[f"upcoming_op_{i+1}_type"] = op.operation_type.value
+                    attributes[f"upcoming_op_{i+1}_energy"] = f"{op.target_energy_wh:.0f}Wh"
+                    attributes[f"upcoming_op_{i+1}_power"] = f"{op.target_power_w:.0f}W"
+                    attributes[f"upcoming_op_{i+1}_price"] = f"€{op.expected_price:.4f}"
+                    attributes[f"upcoming_op_{i+1}_start_time"] = op.start_time.strftime("%H:%M")
+                    attributes[f"upcoming_op_{i+1}_time_until"] = f"{time_until:.0f}min"
+                    attributes[f"upcoming_op_{i+1}_reason"] = op.reason
+                    attributes[f"upcoming_op_{i+1}_priority"] = op.priority
+            
+            # Next operation (if no upcoming)
+            if not upcoming_operations and current_plan.next_operation:
+                next_op = current_plan.next_operation
+                time_until = (next_op.start_time - now).total_seconds() / 3600
+                attributes.update({
+                    "next_operation_type": next_op.operation_type.value,
+                    "next_operation_energy": f"{next_op.target_energy_wh:.0f}Wh",
+                    "next_operation_power": f"{next_op.target_power_w:.0f}W",
+                    "next_operation_price": f"€{next_op.expected_price:.4f}",
+                    "next_operation_start": next_op.start_time.strftime("%Y-%m-%d %H:%M"),
+                    "next_operation_hours_until": f"{time_until:.1f}h",
+                    "next_operation_reason": next_op.reason,
+                    "next_operation_priority": next_op.priority
+                })
+            
+            # Operation type breakdown
+            charge_ops = [op for op in current_plan.operations if 'charge' in op.operation_type.value]
+            sell_ops = [op for op in current_plan.operations if 'sell' in op.operation_type.value]
+            hold_ops = [op for op in current_plan.operations if 'hold' in op.operation_type.value]
+            
+            attributes.update({
+                "charge_operations": len(charge_ops),
+                "sell_operations": len(sell_ops),
+                "hold_operations": len(hold_ops),
+                "total_charge_energy": f"{sum(op.target_energy_wh for op in charge_ops):.0f}Wh",
+                "total_sell_energy": f"{sum(op.target_energy_wh for op in sell_ops):.0f}Wh"
+            })
+            
+            # Current recommendation
+            recommendation = strategic_planner.get_current_recommendation()
+            attributes.update({
+                "current_recommendation": recommendation.get('action', 'unknown'),
+                "recommendation_reason": recommendation.get('reason', ''),
+                "recommendation_confidence": f"{recommendation.get('confidence', 0)*100:.0f}%",
+                "plan_status": recommendation.get('plan_status', 'unknown')
+            })
+            
+            return attributes
             
         except Exception as e:
             return {
