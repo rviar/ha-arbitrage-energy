@@ -46,25 +46,74 @@ class ArbitrageExecutor:
             return False
 
     async def _execute_sell_arbitrage(self, decision: Dict[str, Any]) -> bool:
+        """Execute arbitrage sell mode - set inverter for battery discharge/export."""
         try:
-            await self._set_work_mode(WORK_MODE_EXPORT_FIRST)
-            await self._set_grid_charging(False)
+            _LOGGER.info(f"Setting inverter for arbitrage selling: target power {decision.get('target_power', 0)}W")
             
-            _LOGGER.info(f"Selling arbitrage: target power {decision.get('target_power', 0)}W")
-            return True
+            # Set all arbitrage sell parameters
+            tasks = []
             
+            # 1. Set Work Mode to Export First (prioritize battery discharge)
+            tasks.append(self._set_work_mode(WORK_MODE_EXPORT_FIRST))
+            
+            # 2. Disable Grid Charging (no charging during sell)
+            tasks.append(self._set_grid_charging(False))
+            
+            # 3. Enable Export Surplus (allow energy export to grid)
+            tasks.append(self._set_export_surplus(True))
+            
+            # 4. Set Time of Use to Enabled (use TOU for selling)
+            tasks.append(self._set_time_of_use("Enabled"))
+            
+            # Execute all settings in parallel
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Check results
+            success_count = sum(1 for result in results if result is True)
+            total_count = len(results)
+            
+            if success_count == total_count:
+                _LOGGER.info("Successfully set inverter for arbitrage selling")
+                return True
+            else:
+                _LOGGER.warning(f"Arbitrage sell mode partially set: {success_count}/{total_count} settings successful")
+                return success_count > 0  # Return True if at least some settings succeeded
+                
         except Exception as e:
             _LOGGER.error(f"Error executing sell arbitrage: {e}")
             return False
 
     async def _execute_charge_arbitrage(self, decision: Dict[str, Any]) -> bool:
+        """Execute arbitrage charge mode - set inverter for grid charging."""
         try:
-            await self._set_work_mode(WORK_MODE_ZERO_EXPORT)
-            await self._set_grid_charging(True)
+            _LOGGER.info(f"Setting inverter for arbitrage charging: target power {decision.get('target_power', 0)}W")
             
-            _LOGGER.info(f"Charging for arbitrage: target power {decision.get('target_power', 0)}W")
-            return True
+            # Set all arbitrage charge parameters
+            tasks = []
             
+            # 1. Enable Grid Charging 
+            tasks.append(self._set_grid_charging(True))
+            
+            # 2. Disable Export Surplus (all energy goes to battery)
+            tasks.append(self._set_export_surplus(False))
+            
+            # 3. Set Time of Use to Disabled (system controls charging)
+            tasks.append(self._set_time_of_use("Disabled"))
+            
+            # Execute all settings in parallel
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Check results
+            success_count = sum(1 for result in results if result is True)
+            total_count = len(results)
+            
+            if success_count == total_count:
+                _LOGGER.info("Successfully set inverter for arbitrage charging")
+                return True
+            else:
+                _LOGGER.warning(f"Arbitrage charge mode partially set: {success_count}/{total_count} settings successful")
+                return success_count > 0  # Return True if at least some settings succeeded
+                
         except Exception as e:
             _LOGGER.error(f"Error executing charge arbitrage: {e}")
             return False
@@ -266,15 +315,76 @@ class ArbitrageExecutor:
             return False
 
     async def force_charge_battery(self) -> bool:
+        """Force charge battery - same as arbitrage charging."""
         try:
-            await self._set_work_mode(WORK_MODE_ZERO_EXPORT)
-            await self._set_grid_charging(True)
+            _LOGGER.info("Force charging battery to 100% (same as arbitrage charging)")
             
-            _LOGGER.info("Force charging battery to 100%")
-            return True
+            # Use same settings as arbitrage charging
+            tasks = []
             
+            # 1. Enable Grid Charging 
+            tasks.append(self._set_grid_charging(True))
+            
+            # 2. Disable Export Surplus (all energy goes to battery)
+            tasks.append(self._set_export_surplus(False))
+            
+            # 3. Set Time of Use to Disabled (system controls charging)
+            tasks.append(self._set_time_of_use("Disabled"))
+            
+            # Execute all settings in parallel
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Check results
+            success_count = sum(1 for result in results if result is True)
+            total_count = len(results)
+            
+            if success_count == total_count:
+                _LOGGER.info("Successfully set inverter for force charging")
+                return True
+            else:
+                _LOGGER.warning(f"Force charge mode partially set: {success_count}/{total_count} settings successful")
+                return success_count > 0  # Return True if at least some settings succeeded
+                
         except Exception as e:
             _LOGGER.error(f"Error forcing battery charge: {e}")
+            return False
+
+    async def stop_force_charge(self) -> bool:
+        """Stop force charge - same as hold mode."""
+        try:
+            _LOGGER.info("Stopping force charge (switching to hold mode)")
+            
+            # Use same settings as hold mode
+            tasks = []
+            
+            # 1. Set Time of Use to Enabled
+            tasks.append(self._set_time_of_use("Enabled"))
+            
+            # 2. Set Work Mode to Zero Export To Load
+            tasks.append(self._set_work_mode("Zero Export To Load"))
+            
+            # 3. Enable Export Surplus
+            tasks.append(self._set_export_surplus(True))
+            
+            # 4. Disable Grid Charging
+            tasks.append(self._set_grid_charging(False))
+            
+            # Execute all settings in parallel
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Check results
+            success_count = sum(1 for result in results if result is True)
+            total_count = len(results)
+            
+            if success_count == total_count:
+                _LOGGER.info("Successfully stopped force charging (hold mode set)")
+                return True
+            else:
+                _LOGGER.warning(f"Stop force charge partially set: {success_count}/{total_count} settings successful")
+                return success_count > 0
+                
+        except Exception as e:
+            _LOGGER.error(f"Error stopping force charge: {e}")
             return False
 
     def _can_execute_action(self) -> bool:

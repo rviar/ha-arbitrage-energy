@@ -320,6 +320,8 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
         self._force_charge = force_charge
         if force_charge:
             await self.executor.force_charge_battery()
+        else:
+            await self.executor.stop_force_charge()
         await self.async_request_refresh()
 
     async def set_manual_override(self, hours: int):
