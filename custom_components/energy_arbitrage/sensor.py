@@ -535,7 +535,7 @@ class EnergyArbitrageEnergyForecastSensor(EnergyArbitrageBaseSensor):
             # Get battery strategy
             from .arbitrage.utils import safe_float
             battery_level = safe_float(self.hass.states.get(self.coordinator.config.get('battery_level_sensor')))
-        battery_capacity = self.coordinator.data.get("battery_capacity", 15000)
+            battery_capacity = self.coordinator.data.get("battery_capacity", 15000)
             strategy = predictor.assess_battery_strategy(battery_level, battery_capacity)
             
             return {
