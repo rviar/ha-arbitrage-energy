@@ -125,7 +125,7 @@ class StrategicPlanner:
             # Create operations based on scenario
             operations = self._create_scenario_operations(
                 scenario, energy_balances, energy_strategy, price_windows,
-                current_battery_level, battery_capacity_wh, max_power_w
+                current_battery_level, battery_capacity_wh, max_power_w, currency
             )
             
             # Optimize operation sequence
@@ -219,7 +219,8 @@ class StrategicPlanner:
                                   price_windows,
                                   current_battery_level: float,
                                   battery_capacity_wh: float,
-                                  max_power_w: float) -> List[PlannedOperation]:
+                                  max_power_w: float,
+                                  currency: str = "PLN") -> List[PlannedOperation]:
         """Create operations based on the identified scenario."""
         
         operations = []
