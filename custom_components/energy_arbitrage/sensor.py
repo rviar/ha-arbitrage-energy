@@ -2,6 +2,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from typing import Any
+from .arbitrage.utils import get_current_ha_time, format_ha_time
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
@@ -154,7 +155,8 @@ class EnergyArbitrageStatusSensor(EnergyArbitrageBaseSensor):
             "enabled": self.coordinator.data.get("enabled", False),
             "emergency_mode": self.coordinator.data.get("emergency_mode", False),
             "price_data_age": self.coordinator.data.get("price_data_age"),
-            "last_update": datetime.now().isoformat(),
+            # FIXED: Use HA timezone for sensor last update
+            "last_update": get_current_ha_time(self.hass).isoformat(),
         }
         
         manual_override = self.coordinator.data.get("manual_override_until")
@@ -626,7 +628,7 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
             return {}
         
         try:
-            from datetime import datetime, timezone
+            # Use already imported utils functions
             
             # Use the same strategic planner instance from optimizer
             if hasattr(self.coordinator, 'optimizer') and hasattr(self.coordinator.optimizer, 'strategic_planner'):
@@ -651,7 +653,8 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
                     "reason": "No active strategic plan"
                 }
             
-            now = datetime.now(timezone.utc)
+            # FIXED: Use HA timezone for strategic plan analysis
+            now = get_current_ha_time(self.hass)
             
             # Basic plan info
             attributes = {

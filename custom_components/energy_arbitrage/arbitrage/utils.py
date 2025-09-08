@@ -3,13 +3,22 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Optional, Union, Dict, List
 import zoneinfo
 
+# Global timezone cache to avoid repeated calls
+_ha_timezone_cache = None
+
 _LOGGER = logging.getLogger(__name__)
 
 def get_ha_timezone(hass=None) -> timezone:
-    """Get Home Assistant configured timezone."""
+    """Get Home Assistant configured timezone with caching."""
+    global _ha_timezone_cache
+    
     if hass and hasattr(hass.config, 'time_zone'):
         try:
-            return zoneinfo.ZoneInfo(hass.config.time_zone)
+            # Cache the timezone to avoid repeated zoneinfo calls
+            if _ha_timezone_cache is None:
+                _ha_timezone_cache = zoneinfo.ZoneInfo(hass.config.time_zone)
+                _LOGGER.debug(f"Cached HA timezone: {hass.config.time_zone}")
+            return _ha_timezone_cache
         except Exception as e:
             _LOGGER.warning(f"Failed to get HA timezone {hass.config.time_zone}: {e}")
     
@@ -106,6 +115,7 @@ def calculate_battery_charge_time(
     return needed_wh / charge_power_w
 
 def get_current_price_data(price_data: List[Dict], current_time: datetime = None, hass=None) -> Optional[Dict]:
+    """Get current price data entry matching current HA timezone time."""
     if not price_data:
         return None
     
@@ -125,18 +135,19 @@ def get_current_price_data(price_data: List[Dict], current_time: datetime = None
 def find_price_extremes(
     price_data: List[Dict], 
     hours_ahead: int = 24,
-    extreme_type: str = 'peaks'
+    extreme_type: str = 'peaks',
+    hass=None
 ) -> List[Dict]:
     if not price_data:
         return []
     
-    ha_tz = get_ha_timezone()
+    ha_tz = get_ha_timezone(hass)
     current_time = datetime.now(ha_tz)
     cutoff_time = current_time + timedelta(hours=hours_ahead)
     
     filtered_data = []
     for entry in price_data:
-        start_time = parse_datetime(entry.get('start', ''))
+        start_time = parse_datetime(entry.get('start', ''), hass)
         if start_time and start_time <= cutoff_time:
             filtered_data.append(entry)
     
@@ -223,6 +234,26 @@ def calculate_arbitrage_profit(
         })
     
     return result
+
+
+def get_current_ha_time(hass=None) -> datetime:
+    """Get current time in Home Assistant timezone."""
+    ha_tz = get_ha_timezone(hass)
+    return datetime.now(ha_tz)
+
+
+def convert_utc_to_ha_time(utc_dt: datetime, hass=None) -> datetime:
+    """Convert UTC datetime to Home Assistant timezone."""
+    if utc_dt.tzinfo is None:
+        utc_dt = utc_dt.replace(tzinfo=timezone.utc)
+    
+    ha_tz = get_ha_timezone(hass)
+    return utc_dt.astimezone(ha_tz)
+
+
+def format_ha_time(dt: datetime, format_str: str = "%Y-%m-%d %H:%M:%S %Z") -> str:
+    """Format datetime with timezone info for logging/display."""
+    return dt.strftime(format_str)
 
 
 def validate_config(config: Dict[str, Any]) -> List[str]:

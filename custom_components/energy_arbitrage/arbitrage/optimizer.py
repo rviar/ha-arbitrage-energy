@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, timedelta, timezone
+from .utils import get_current_ha_time, get_ha_timezone, format_ha_time
 from typing import Dict, Any, List, Optional, Tuple
 
 from .sensor_data_helper import SensorDataHelper
@@ -139,8 +140,9 @@ class ArbitrageOptimizer:
                 opportunities.append({
                     'buy_price': current_buy_price,
                     'sell_price': current_sell_price,
-                    'buy_time': datetime.now(timezone.utc).isoformat(),
-                    'sell_time': datetime.now(timezone.utc).isoformat(),
+                    # FIXED: Use HA timezone for arbitrage timestamps
+                    'buy_time': get_current_ha_time(getattr(self.sensor_helper, 'hass', None)).isoformat(),
+                    'sell_time': get_current_ha_time(getattr(self.sensor_helper, 'hass', None)).isoformat(),
                     'roi_percent': profit_details['roi_percent'],
                     'net_profit_per_kwh': profit_details['net_profit'],
                     'degradation_cost': profit_details['degradation_cost'],
@@ -178,8 +180,10 @@ class ArbitrageOptimizer:
                 opportunities.append({
                     'buy_price': min_buy_price_24h,
                     'sell_price': max_sell_price_24h,
-                    'buy_time': (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat(),  # Approximation
-                    'sell_time': (datetime.now(timezone.utc) + timedelta(hours=18)).isoformat(),  # Approximation
+                    # FIXED: Use HA timezone for arbitrage timestamps
+                    ha_now = get_current_ha_time(getattr(self.sensor_helper, 'hass', None))
+                    'buy_time': (ha_now + timedelta(hours=12)).isoformat(),  # Approximation
+                    'sell_time': (ha_now + timedelta(hours=18)).isoformat(),  # Approximation
                     'roi_percent': profit_details['roi_percent'],
                     'net_profit_per_kwh': profit_details['net_profit'],
                     'degradation_cost': profit_details['degradation_cost'],
@@ -261,7 +265,8 @@ class ArbitrageOptimizer:
         # 🎯 STRATEGIC PLANNING - NEW! 
         try:
             # Update strategic plan every 30 minutes or when conditions change significantly
-            now = datetime.now(timezone.utc)
+            # FIXED: Use HA timezone for traditional arbitrage decisions
+            now = get_current_ha_time(getattr(self.sensor_helper, 'hass', None))
             should_update_plan = (
                 self._last_plan_update is None or
                 (now - self._last_plan_update).total_seconds() > 1800 or  # 30 minutes

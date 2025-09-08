@@ -1,224 +1,209 @@
-Создай кастомную интеграцию для Home Assistant через HACS для автоматизированного энергетического арбитража с солнечными панелями и батареями.
+# CLAUDE.md
 
-## Требования к функциональности:
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-### 1. Основной алгоритм арбитража:
+## Overview
 
-- Анализировать прогноз солнечной генерации на 24-48 часов
-- Прогнозировать домашнее потребление на основе исторических данных
-- Получать почасовые тарифы на электроэнергию (покупка/продажа)
-- Находить выгодные окна для продажи дорого и покупки дешево
-- Учитывать текущий заряд батареи и технические ограничения
-- Обеспечивать минимальный резерв энергии для критических нужд
+This is a Home Assistant custom integration for **Energy Arbitrage** - automated energy trading using solar panels, battery storage, and dynamic electricity pricing. The system implements predictive algorithms to optimize battery charging/discharging for maximum profit while ensuring energy security.
 
-### 2. Структура интеграции:
+### Home Assistant Integration Testing
+- Install via HACS or copy to `custom_components/energy_arbitrage/`
+- Restart Home Assistant
+- Add integration via UI: Settings → Devices & Services → Add Integration → Energy Arbitrage
+- Monitor logs: `tail -f home-assistant.log | grep energy_arbitrage`
 
+### Testing Commands
+```bash
+# Test timezone refactoring (CRITICAL for arbitrage accuracy)
+python3 test_timezone_refactor.py
+
+# Test individual modules if available
+python3 test_price_extremes.py
+python3 test_coordinator_fixes.py
+```
+
+## Architecture Overview
+
+### Core Structure
 ```
 custom_components/energy_arbitrage/
-├── __init__.py
-├── manifest.json
-├── config_flow.py
-├── const.py
-├── coordinator.py
-├── sensor.py
-├── switch.py
-├── services.yaml
-└── arbitrage/
-    ├── predictor.py     # Модуль прогнозирования
-    ├── optimizer.py     # Оптимизатор арбитража
-    ├── executor.py      # Исполнитель решений
-    └── utils.py         # Вспомогательные функции
+├── __init__.py              # Integration setup & coordinator initialization
+├── coordinator.py           # DataUpdateCoordinator - main orchestration
+├── config_flow.py          # UI configuration wizard
+├── sensor.py               # All sensor entities (40+ sensors)
+├── switch.py               # Control switches (enabled, emergency mode, etc.)
+├── number.py              # Configurable parameters
+├── const.py               # Constants and defaults
+└── arbitrage/             # Core arbitrage logic modules
+    ├── predictor.py       # Energy balance prediction
+    ├── time_analyzer.py   # Time window analysis
+    ├── strategic_planner.py # Long-term planning
+    ├── optimizer.py       # Decision optimizer
+    ├── executor.py        # Action execution
+    ├── utils.py          # Utility functions
+    └── sensor_data_helper.py # Data collection helpers
 ```
 
-### 3. Конфигурация через UI:
+### Data Architecture Principle
 
-**Солнечная система:**
+**CRITICAL:** The system follows a strict **sensor-centric architecture** where all data flows through Home Assistant sensors. Algorithms must ONLY consume data from sensors, never directly from entity_id sources or configuration.
 
-- Сенсор прогноза генерации (entity_id)
-- Максимальная мощность панелей (кВт)
+**TIMEZONE CRITICAL:** All datetime operations use Home Assistant's configured timezone, never UTC or system timezone. MQTT price data (in UTC) is automatically converted to HA timezone for accurate arbitrage timing.
 
-**Батарейная система:**
+#### Data Flow Hierarchy:
+1. **Input Data Sensors** - External data sources (prices, PV, battery levels)
+2. **Configuration Parameter Sensors** - User settings exposed as sensors  
+3. **Algorithm Processing** - Reads ONLY from sensors, never config files
+4. **Output/Decision Sensors** - Results published as sensors
 
-- Сенсор уровня заряда батареи (%)
-- Максимальная емкость батареи (кВт⋅ч)
-- Минимальный резерв заряда (%, по умолчанию 20%)
-- Эффективность заряда/разряда (%, по умолчанию 90%)
-- Максимальная мощность заряда/разряда (кВт)
+### Three-Tier Predictive System
 
-**Энергосистема:**
+#### 1. EnergyBalancePredictor (`predictor.py`)
+- Analyzes Solcast PV forecasts for today/tomorrow
+- Estimates home consumption patterns
+- Determines energy surplus/deficit scenarios
+- Recommends strategies: `charge_aggressive`, `charge_moderate`, `sell_aggressive`, `sell_partial`, `hold`
 
-- Сенсор текущего потребления (кВт)
-- Сенсор почасовых тарифов покупки
-- Сенсор почасовых тарифов продажи
-- Максимальная мощность продажи в сеть (кВт)
+#### 2. TimeWindowAnalyzer (`time_analyzer.py`)
+- Processes MQTT price data to find optimal time windows
+- Identifies sequential periods of low/high prices
+- Calculates time pressure: `high`, `medium`, `low`
+- Plans operations considering battery power constraints
 
-**Алгоритм:**
+#### 3. StrategicPlanner (`strategic_planner.py`)
+- Creates 24-48 hour operational plans
+- Manages complex scenarios: `energy_critical_deficit`, `surplus_both_days`, `transition_periods`
+- Optimizes operation sequences
+- Generates backup plans for risky scenarios
 
-- Горизонт планирования (часы, по умолчанию 24)
-- Интервал пересчета (минуты, по умолчанию 1)
-- Минимальная маржа арбитража (%, по умолчанию 5%)
-- Приоритет самопотребления (bool, по умолчанию true)
+#### 4. ArbitrageOptimizer (`optimizer.py`)
+- Implements 5-tier decision hierarchy
+- Executes real-time decision making
+- Manages inverter mode transitions
+- Handles safety checks and constraints
 
-### 4. Создаваемые сенсоры:
+## Key Components
 
-```yaml
-# DELETED: next_action - дублировал strategic_plan.current_recommendation
-sensor.energy_arbitrage_target_power       # Целевая мощность заряда/разряда
-sensor.energy_arbitrage_profit_forecast    # Прогноз прибыли за 24 часа
-sensor.energy_arbitrage_sell_window        # Начало следующего окна продажи
-sensor.energy_arbitrage_buy_window         # Начало следующего окна покупки
+### DataUpdateCoordinator (`coordinator.py`)
+- Central orchestration point
+- Manages all sensor updates
+- Coordinates between predictive modules
+- Handles MQTT price data integration
+- Updates every 60 seconds (configurable)
+
+### Sensor System (`sensor.py`)
+**40+ sensors organized by category:**
+
+- **Input Data:** Current prices, battery levels, power readings
+- **Configuration:** All user settings exposed as sensors
+- **Predictive:** Energy forecasts, price windows, strategic plans
+- **Output:** Target power, profit forecasts, ROI calculations
+- **Status:** System status, debug information
+
+### Safety and Constraints
+- **Battery protection:** Minimum reserve levels, cycle limiting
+- **Power limits:** Maximum charge/discharge rates
+- **Time constraints:** Cooldown periods between actions
+- **Degradation tracking:** Battery wear calculations
+- **Emergency modes:** Manual overrides and safety shutoffs
+
+## Configuration System
+
+### Multi-Step UI Configuration:
+1. **Solar & Energy Sensors** - Entity ID selection
+2. **Inverter Controls** - Work mode and charging switches  
+3. **MQTT Price Topics** - Dynamic tariff sources
+4. **System Parameters** - Battery specs, limits, algorithms
+
+### Default Entity Mappings:
+- **Solar:** `sensor.inverter_pv_power`, Solcast forecasts
+- **Battery:** `sensor.inverter_battery`, `sensor.inverter_battery_power`
+- **Energy:** `sensor.inverter_load_power`, `sensor.inverter_grid_power`
+- **Control:** `select.inverter_work_mode`, `switch.inverter_battery_grid_charging`
+- **MQTT:** `energy/forecast/buy`, `energy/forecast/sell`
+
+## Inverter Control Logic
+
+### Arbitrage Modes:
+- **Charge Arbitrage:** `Grid Charging=True`, `Export Surplus=False`, `ToU=Disabled`
+- **Sell Arbitrage:** `Work Mode=Export First`, `Grid Charging=False`, `ToU=Enabled`  
+- **Hold Mode:** `Work Mode=Zero Export`, `ToU=Enabled`, `Export Surplus=True`
+
+### Decision Priority Hierarchy:
+1. **Strategic Decisions** (confidence ≥ 0.8) - Long-term energy planning
+2. **Time Critical** (high time pressure) - Expiring price windows  
+3. **Predictive Planned** - Scheduled operations
+4. **Predictive Standard** - Standard energy balance
+5. **Traditional Arbitrage** - Opportunistic trading
+6. **Strategic Hold** (default) - Intelligent waiting
+
+## Development Patterns
+
+### Adding New Sensors:
+1. Define constants in `const.py`
+2. Add sensor class in `sensor.py`
+3. Register in `coordinator.py`
+4. Update config flow if needed
+
+### Algorithm Development:
+- **MUST** read data only through `get_sensor_value()` method
+- **NEVER** access config directly or external entity_id  
+- All algorithms work with standardized sensor data
+- Results published through coordinator updates
+
+### Timezone Requirements (CRITICAL):
+- **ALWAYS** use `get_current_ha_time(hass)` instead of `datetime.now()`
+- **NEVER** use `datetime.now(timezone.utc)` - use HA timezone
+- **MQTT data** is automatically converted from UTC to HA timezone
+- **Import** timezone utilities: `from .arbitrage.utils import get_current_ha_time, get_ha_timezone, parse_datetime`
+
+### Testing Approach:
+- Individual module testing with Python scripts
+- Integration testing in Home Assistant development environment
+- Real-world testing with actual inverter hardware
+- Price simulation with historical MQTT data
+
+## Key Constants and Defaults
+
+```python
+DEFAULT_MAX_PV_POWER = 10600        # 10.6 kW
+DEFAULT_BATTERY_CAPACITY = 15000    # 15 kWh  
+DEFAULT_MAX_BATTERY_POWER = 6500    # 6.5 kW
+DEFAULT_MIN_ARBITRAGE_MARGIN = 15   # 15%
+DEFAULT_MAX_DAILY_CYCLES = 2.0      # Battery protection
+DEFAULT_MIN_ARBITRAGE_DEPTH = 40    # 40% minimum SOC
+DEFAULT_CURRENCY = "PLN"
 ```
 
-### 5. Переключатели и сервисы:
+## Debugging and Troubleshooting
 
-```yaml
-switch.energy_arbitrage_enabled             # Включение/выключение арбитража
-switch.energy_arbitrage_emergency_mode      # Аварийный режим (только резерв)
+### Common Issues:
+- **MQTT connectivity:** Check broker availability and topic formats
+- **Solcast integration:** Verify API limits and sensor availability  
+- **Inverter control:** Ensure proper entity_id access permissions
+- **Price data format:** MQTT messages must be JSON arrays
 
-# Сервисы:
-energy_arbitrage.recalculate               # Принудительный пересчет
-energy_arbitrage.set_battery_reserve       # Изменить минимальный резерв
-energy_arbitrage.manual_override           # Ручное управление на N часов
-```
+### Logging:
+- Main logs: `_LOGGER.info/debug/warning` in coordinator
+- Algorithm traces in each arbitrage module
+- Sensor state changes logged automatically by HA
 
-### 7. Технические требования:
+### Configuration Validation:
+- Entity ID existence checked during setup
+- Numeric parameter bounds enforced
+- MQTT topic format validation
+- Battery specification consistency checks
 
-- Использовать `DataUpdateCoordinator` для управления обновлениями
-- Логирование всех решений и их обоснований
-- Обработка ошибок и восстановление после сбоев
-- Валидация входных данных и предотвращение некорректных команд
-- Интеграция с существующими инверторными системами через стандартные протоколы
-- Веб-интерфейс для мониторинга и настройки параметров
+## Integration Dependencies
 
-### 8. Безопасность и надежность:
+- **Home Assistant:** 2024.1.0+
+- **MQTT Integration:** For price data
+- **Solcast Integration:** For PV forecasts (recommended)
+- **Solarman Integration:** For inverter control (recommended)
 
-- Автоматическое отключение при обнаружении аномалий
-- Ограничение максимальной мощности операций
-- Резервный режим при потере связи с инвертором
-- Защита от глубокого разряда батареи
-- Логирование всех операций для аудита
+## Language and Documentation
 
-### 9. Файлы для HACS:
-
-```json
-// manifest.json
-{
-  "domain": "energy_arbitrage",
-  "name": "Energy Arbitrage",
-  "documentation": "https://github.com/username/ha-energy-arbitrage",
-  "dependencies": [],
-  "codeowners": ["@username"],
-  "requirements": ["numpy", "pandas", "scikit-learn"],
-  "version": "1.0.0"
-}
-```
-
-Создай полнофункциональную интеграцию с подробными комментариями, примерами конфигурации и документацией для пользователей. Интеграция должна быть готова к установке через HACS и немедленному использованию после настройки базовых параметров.
-
-## Дополнительные пожелания:
-
-**ПРОЦЕСС РАЗРАБОТКИ:**
-
-1. **Начни с детального опроса** - задай все вопросы о моих entity_id и источниках данных
-2. **Покажи диаграмму архитектуры** с конкретными entity_id после получения ответов
-3. **Предложи дополнительные опции** на основе доступных данных
-4. **Создай адаптированную интеграцию** под мою конкретную систему
-
-**ФУНКЦИОНАЛЬНОСТЬ:**
-
-- Добавь возможность экспорта данных для анализа эффективности
-- Создай простой веб-дашборд для мониторинга
-- Добавь режим обучения для улучшения прогнозов потребления
-- Реализуй уведомления о выгодных арбитражных возможностях
-- Создай детальное логирование всех решений для анализа
-
-**ВАЖНО:** Не делай предположений о том, какие entity_id или интеграции я использую. Всегда спрашивай!
-
-## Требования к архитектуре интеграции:
-
-### ПРИНЦИП РАЗДЕЛЕНИЯ ДАННЫХ И ЛОГИКИ:
-
-1. **Все данные должны быть доступны через сенсоры:**
-
-   - Входные данные (цены, мощности, уровень батареи) → Input Data Sensors
-   - Параметры конфигурации → Configuration Parameter Sensors
-   - Выходные данные решений → Output/Decision Sensors
-
-2. **Алгоритм арбитража должен использовать только данные из сенсоров:**
-
-   - Не напрямую из entity_id других интеграций
-   - Не из конфигурационных файлов
-   - Только через стандартизованные сенсоры интеграции
-
-3. **Структура сенсоров:**
-
-   **Input Data Sensors (входные данные):**
-
-   ```yaml
-   sensor.energy_arbitrage_current_buy_price      # Текущая цена покупки
-   sensor.energy_arbitrage_current_sell_price     # Текущая цена продажи
-   sensor.energy_arbitrage_input_battery_level    # Уровень заряда батареи
-   sensor.energy_arbitrage_input_pv_power         # Текущая мощность PV
-   sensor.energy_arbitrage_input_load_power       # Текущая мощность нагрузки
-   sensor.energy_arbitrage_input_grid_power       # Текущая мощность сети
-   sensor.energy_arbitrage_pv_forecast_today      # Прогноз PV на сегодня
-   sensor.energy_arbitrage_pv_forecast_tomorrow   # Прогноз PV на завтра
-   ```
-
-   **Configuration Parameter Sensors (параметры конфигурации):**
-
-   ```yaml
-   sensor.energy_arbitrage_config_min_arbitrage_margin    # Мин. маржа арбитража (%)
-   sensor.energy_arbitrage_config_planning_horizon        # Горизонт планирования (часы)
-   sensor.energy_arbitrage_config_max_daily_cycles        # Макс. циклов в день
-   sensor.energy_arbitrage_config_battery_efficiency      # Эффективность батареи (%)
-   sensor.energy_arbitrage_config_min_battery_reserve     # Мин. резерв батареи (%)
-   sensor.energy_arbitrage_config_max_battery_power       # Макс. мощность батареи (кВт)
-   sensor.energy_arbitrage_config_battery_capacity        # Емкость батареи (кВт⋅ч)
-   ```
-
-   **Output/Decision Sensors (выходные данные решений):**
-
-   ```yaml
-   sensor.energy_arbitrage_target_power           # Целевая мощность
-   sensor.energy_arbitrage_profit_forecast        # Прогноз прибыли
-   sensor.energy_arbitrage_roi                    # Ожидаемый ROI
-   ```
-
-4. **Преимущества такой архитектуры:**
-
-   - **Прозрачность:** Все данные видны в UI Home Assistant
-   - **Отладка:** Легко отследить какие данные использует алгоритм
-   - **Тестирование:** Можно подставить тестовые значения через сенсоры
-   - **Мониторинг:** Пользователь видит все входные и выходные данные
-   - **Настройка:** Все параметры доступны через UI
-   - **Логирование:** Автоматическое логирование изменений через HA
-
-5. **Обновление данных:**
-
-   - Coordinator собирает данные из источников (entity_id, MQTT)
-   - Обновляет Input Data Sensors
-   - Configuration Parameter Sensors обновляются при изменении настроек
-   - Алгоритм арбитража читает данные из сенсоров и обновляет Decision Sensors
-
-6. **Код алгоритма должен выглядеть так:**
-
-   ```python
-   def calculate_optimal_action(self):
-       # Читаем входные данные из сенсоров
-       current_buy_price = self.get_sensor_value("current_buy_price")
-       current_sell_price = self.get_sensor_value("current_sell_price")
-       battery_level = self.get_sensor_value("input_battery_level")
-
-       # Читаем параметры конфигурации из сенсоров
-       min_margin = self.get_sensor_value("config_min_arbitrage_margin")
-       planning_horizon = self.get_sensor_value("config_planning_horizon")
-
-       # Выполняем расчеты
-       decision = self.optimize_arbitrage(...)
-
-       # Обновляем выходные сенсоры через coordinator
-       return decision
-   ```
-
-**ЭТО КРИТИЧЕСКИ ВАЖНО:** Весь алгоритм должен работать только с данными из сенсоров, а не напрямую из конфигурации или внешних entity_id!
+The codebase contains both English code/comments and Russian documentation. When making changes:
+- Keep code, variable names, and technical comments in English
+- Preserve Russian user-facing text and documentation
+- All entity names and sensor attributes should remain in English for HA compatibility

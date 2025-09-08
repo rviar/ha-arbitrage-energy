@@ -5,6 +5,7 @@ Analyzes PV forecasts, consumption patterns, and battery needs.
 
 import logging
 from datetime import datetime, timezone, timedelta
+from .utils import get_current_ha_time, get_ha_timezone
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
@@ -55,7 +56,8 @@ class EnergyBalancePredictor:
         
     def calculate_energy_balance_today(self) -> EnergyBalance:
         """Calculate energy balance for remainder of today."""
-        now = datetime.now()
+        # FIXED: Use HA timezone instead of system timezone
+        now = get_current_ha_time(getattr(self.sensor_helper, 'hass', None))
         
         # Get PV forecast for today
         pv_forecast_wh = self.sensor_helper.get_pv_forecast_today()

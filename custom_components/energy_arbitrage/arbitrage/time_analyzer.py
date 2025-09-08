@@ -421,7 +421,8 @@ class TimeWindowAnalyzer:
     def get_current_price_situation(self, windows: List[PriceWindow]) -> Dict[str, Any]:
         """Analyze current price situation and upcoming opportunities."""
         
-        now = datetime.now(timezone.utc)
+        # FIXED: Use HA timezone for time analysis
+        now = get_current_ha_time(self.hass)
         
         # Find current windows
         current_windows = [w for w in windows if w.is_current]

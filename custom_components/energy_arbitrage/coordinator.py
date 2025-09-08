@@ -83,20 +83,7 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
     async def async_setup(self):
         await self._subscribe_mqtt_topics()
         
-    def _get_current_time_utc(self) -> datetime:
-        """Get current time in UTC considering HA's timezone. DEPRECATED - use HA timezone instead."""
-        # This method is kept for backward compatibility but should be replaced with HA timezone
-        _LOGGER.warning("_get_current_time_utc is deprecated, use HA timezone instead")
-        
-        if hasattr(self.hass.config, 'time_zone'):
-            try:
-                tz = zoneinfo.ZoneInfo(str(self.hass.config.time_zone))
-                local_now = datetime.now(tz)
-                return local_now.astimezone(timezone.utc)
-            except Exception as e:
-                _LOGGER.warning(f"Failed to get HA timezone, using system UTC: {e}")
-        
-        return datetime.now(timezone.utc)
+    # REMOVED: Deprecated _get_current_time_utc method - use HA timezone directly
     
     def _find_current_price_entry(self, price_data: list) -> dict:
         """Find the current price entry based on start/end timestamps using HA timezone."""
@@ -177,7 +164,9 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug(f"First buy price entry: {data[0]}")
             
             self.price_data["buy_prices"] = data
-            self.price_data["last_updated"] = datetime.now()
+            # FIXED: Use HA timezone for price data timestamps
+            from .arbitrage.utils import get_current_ha_time
+            self.price_data["last_updated"] = get_current_ha_time(self.hass)
             _LOGGER.debug(f"Stored buy prices: {len(data)} entries")
             # Trigger sensor update with fresh data
             self.hass.async_create_task(self.async_request_refresh())
@@ -195,7 +184,9 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
                 _LOGGER.info(f"First sell price entry: {data[0]}")
             
             self.price_data["sell_prices"] = data
-            self.price_data["last_updated"] = datetime.now()
+            # FIXED: Use HA timezone for price data timestamps  
+            from .arbitrage.utils import get_current_ha_time
+            self.price_data["last_updated"] = get_current_ha_time(self.hass)
             _LOGGER.info(f"✅ Stored sell prices: {len(data)} entries")
             # Trigger sensor update with fresh data
             self.hass.async_create_task(self.async_request_refresh())
@@ -369,13 +360,17 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
 
     def _get_price_data_age(self) -> Optional[int]:
         if self.price_data["last_updated"]:
-            return (datetime.now() - self.price_data["last_updated"]).total_seconds()
+            # FIXED: Use HA timezone for age calculation
+            from .arbitrage.utils import get_current_ha_time
+            return (get_current_ha_time(self.hass) - self.price_data["last_updated"]).total_seconds()
         return None
 
     def _is_manual_override_active(self) -> bool:
         if not self._manual_override_until:
             return False
-        return datetime.now() < self._manual_override_until
+        # FIXED: Use HA timezone for manual override check
+        from .arbitrage.utils import get_current_ha_time
+        return get_current_ha_time(self.hass) < self._manual_override_until
 
     async def set_enabled(self, enabled: bool):
         self._enabled = enabled
@@ -396,7 +391,9 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
         await self.async_request_refresh()
 
     async def set_manual_override(self, hours: int):
-        self._manual_override_until = datetime.now() + timedelta(hours=hours)
+        # FIXED: Use HA timezone for manual override timeout
+        from .arbitrage.utils import get_current_ha_time
+        self._manual_override_until = get_current_ha_time(self.hass) + timedelta(hours=hours)
         await self.async_request_refresh()
 
     async def clear_manual_override(self):
