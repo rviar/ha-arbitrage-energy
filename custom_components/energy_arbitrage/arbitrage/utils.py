@@ -132,39 +132,6 @@ def get_current_price_data(price_data: List[Dict], current_time: datetime = None
     
     return None
 
-def find_price_extremes(
-    price_data: List[Dict], 
-    hours_ahead: int = 24,
-    extreme_type: str = 'peaks',
-    hass=None
-) -> List[Dict]:
-    if not price_data:
-        return []
-    
-    ha_tz = get_ha_timezone(hass)
-    current_time = datetime.now(ha_tz)
-    cutoff_time = current_time + timedelta(hours=hours_ahead)
-    
-    filtered_data = []
-    for entry in price_data:
-        start_time = parse_datetime(entry.get('start', ''), hass)
-        if start_time and start_time <= cutoff_time:
-            filtered_data.append(entry)
-    
-    if not filtered_data:
-        return []
-    
-    prices = [entry.get('value', 0) for entry in filtered_data]
-    avg_price = sum(prices) / len(prices)
-    
-    if extreme_type == 'peaks':
-        threshold = avg_price * 1.2
-        return [entry for entry in filtered_data if entry.get('value', 0) > threshold]
-    elif extreme_type == 'valleys':
-        threshold = avg_price * 0.8
-        return [entry for entry in filtered_data if entry.get('value', 0) < threshold]
-    
-    return []
 
 def calculate_battery_degradation_cost(
     energy_amount_wh: float,

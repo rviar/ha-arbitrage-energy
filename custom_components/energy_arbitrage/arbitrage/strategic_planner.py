@@ -4,16 +4,11 @@ Combines energy forecasts, price windows, and system constraints into optimal st
 """
 
 import logging
-from datetime import datetime, timezone, timedelta
-from .utils import get_current_ha_time, get_ha_timezone, convert_utc_to_ha_time
-from typing import Dict, Any, List, Optional, Tuple
+from datetime import datetime, timedelta
+from .utils import get_current_ha_time, get_ha_timezone
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from enum import Enum
-
-# Import TYPE_CHECKING to avoid circular import
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from .time_analyzer import PriceWindow
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -107,7 +102,7 @@ class StrategicPlanner:
         self._current_plan: Optional[StrategicPlan] = None
         self._plan_history: List[StrategicPlan] = []
         
-    def _create_optimized_operation(self, operation_type: OperationType, window: 'PriceWindow', 
+    def _create_optimized_operation(self, operation_type: OperationType, window: Dict[str, Any], 
                                     target_energy_wh: float, target_power_w: float, 
                                     expected_price: float, confidence: float, priority: int, 
                                     reason: str, price_data: List[Dict] = None) -> PlannedOperation:
@@ -147,7 +142,7 @@ class StrategicPlanner:
             alternatives=[]
         )
     
-    def _calculate_operation_confidence(self, window: 'PriceWindow', action: str, 
+    def _calculate_operation_confidence(self, window: Dict[str, Any], action: str, 
                                       energy_wh: float, power_w: float) -> float:
         """Calculate dynamic confidence for a specific operation."""
         base_confidence = window.confidence
@@ -228,8 +223,6 @@ class StrategicPlanner:
             risk_assessment = self._assess_plan_risk(operations, energy_balances)
             
             # Create the plan
-            # Use HA timezone for strategic planning
-            # Use already imported get_ha_timezone
             ha_tz = get_ha_timezone(getattr(self.sensor_helper, 'hass', None))
             now = datetime.now(ha_tz)
             
@@ -271,7 +264,7 @@ class StrategicPlanner:
         
         today_balance = energy_balances['today']
         tomorrow_balance = energy_balances['tomorrow']
-        next_48h_balance = energy_balances['next_48h']
+        # next_48h_balance = energy_balances['next_48h']  # Available if needed for future scenarios
         
         buy_windows = [w for w in price_windows if w.action == 'buy']
         sell_windows = [w for w in price_windows if w.action == 'sell']
@@ -398,6 +391,7 @@ class StrategicPlanner:
     
     def _create_critical_selling_operations(self, price_windows, energy_strategy, current_battery_level, battery_capacity_wh, max_power_w) -> List[PlannedOperation]:
         """Create urgent selling operations."""
+        # Note: energy_strategy parameter available for future strategic refinements
         operations = []
         
         # Find the best selling windows
@@ -515,6 +509,7 @@ class StrategicPlanner:
     
     def _create_transition_operations(self, price_windows, energy_balances, current_battery_level, battery_capacity_wh, max_power_w, transition_type, currency: str = "PLN") -> List[PlannedOperation]:
         """Create operations for transition scenarios."""
+        # Note: energy_balances and other parameters available for enhanced planning logic
         operations = []
         
         if transition_type == "surplus_to_deficit":

@@ -7,6 +7,10 @@ import logging
 from typing import Any, Optional, Dict
 from homeassistant.core import HomeAssistant
 
+from .constants import (
+    FALLBACK_BATTERY_CAPACITY_WH, FALLBACK_BATTERY_RESERVE_PERCENT,
+    MAX_BATTERY_LEVEL
+)
 from .utils import calculate_arbitrage_profit
 
 _LOGGER = logging.getLogger(__name__)
@@ -142,8 +146,8 @@ class SensorDataHelper:
     def get_battery_capacity(self) -> float:
         """Get battery capacity in Wh from coordinator data."""
         if self.coordinator and self.coordinator.data:
-            return self.coordinator.data.get("battery_capacity", 15000)
-        return 15000
+            return self.coordinator.data.get("battery_capacity", FALLBACK_BATTERY_CAPACITY_WH)
+        return FALLBACK_BATTERY_CAPACITY_WH
     
     def get_min_arbitrage_depth(self) -> float:
         """Get minimum arbitrage depth in % from coordinator data."""
@@ -156,7 +160,7 @@ class SensorDataHelper:
     def is_battery_charging_viable(self) -> bool:
         """Check if battery has room for charging."""
         battery_level = self.get_battery_level()
-        return battery_level < 95.0
+        return battery_level < MAX_BATTERY_LEVEL
     
     def is_battery_discharging_viable(self) -> bool:
         """Check if battery can be discharged (above reserve)."""

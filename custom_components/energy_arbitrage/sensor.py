@@ -3,6 +3,7 @@ import logging
 from datetime import datetime
 from typing import Any
 from .arbitrage.utils import get_current_ha_time, format_ha_time, safe_float
+from .arbitrage.constants import FALLBACK_BATTERY_CAPACITY_WH
 from .arbitrage.predictor import EnergyBalancePredictor
 from .arbitrage.sensor_data_helper import SensorDataHelper
 from .arbitrage.strategic_planner import StrategicPlanner
@@ -511,7 +512,7 @@ class EnergyArbitrageEnergyForecastSensor(EnergyArbitrageBaseSensor):
             # Get battery strategy
             # Use already imported safe_float
             battery_level = safe_float(self.hass.states.get(self.coordinator.config.get('battery_level_sensor')))
-            battery_capacity = self.coordinator.data.get("battery_capacity", 15000)
+            battery_capacity = self.coordinator.data.get("battery_capacity", FALLBACK_BATTERY_CAPACITY_WH)
             strategy = predictor.assess_battery_strategy(battery_level, battery_capacity)
             
             return {

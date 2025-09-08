@@ -1,17 +1,22 @@
 import logging
-from datetime import datetime, timedelta, timezone
-from .utils import get_current_ha_time, get_ha_timezone, format_ha_time, parse_datetime
-from typing import Dict, Any, List, Optional, Tuple
+from datetime import datetime, timedelta
+from .utils import get_current_ha_time, get_ha_timezone, parse_datetime
+from typing import Dict, Any, List
 from ..const import CONF_CURRENCY, DEFAULT_CURRENCY
 
 from .sensor_data_helper import SensorDataHelper
 from .predictor import EnergyBalancePredictor
 from .time_analyzer import TimeWindowAnalyzer
 from .strategic_planner import StrategicPlanner
+from .decision_handlers import (
+    DecisionContext, DecisionResult,
+    StrategicDecisionHandler, TimeCriticalDecisionHandler, 
+    PredictiveDecisionHandler, TraditionalArbitrageHandler, HoldDecisionHandler
+)
+from .constants import STRATEGIC_PLAN_UPDATE_INTERVAL
 from .utils import (
-    safe_float, calculate_available_battery_capacity, 
-    get_current_price_data, find_price_extremes,
-    calculate_arbitrage_profit, calculate_battery_charge_time
+    calculate_available_battery_capacity, 
+    calculate_arbitrage_profit
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -24,6 +29,15 @@ class ArbitrageOptimizer:
         self.time_analyzer = TimeWindowAnalyzer(self.sensor_helper)
         self.strategic_planner = StrategicPlanner(self.sensor_helper, self.energy_predictor, self.time_analyzer)
         self._last_plan_update = None
+        
+        # Initialize decision handlers in priority order
+        self.decision_handlers = [
+            StrategicDecisionHandler(self.sensor_helper, self.time_analyzer),
+            TimeCriticalDecisionHandler(self.sensor_helper, self.time_analyzer),  
+            PredictiveDecisionHandler(self.sensor_helper, self.time_analyzer),
+            TraditionalArbitrageHandler(self.sensor_helper, self.time_analyzer),
+            HoldDecisionHandler(self.sensor_helper, self.time_analyzer)
+        ]
 
     async def calculate_optimal_action(self, data: Dict[str, Any]) -> Dict[str, Any]:
         try:
@@ -120,8 +134,7 @@ class ArbitrageOptimizer:
             roi = self.sensor_helper.get_arbitrage_roi(current_buy_price, current_sell_price)
             
             if roi >= min_margin:
-                gross_profit = current_sell_price - current_buy_price
-                net_profit = gross_profit * battery_efficiency
+                # profit calculation done in profit_details below
                 
                 # Calculate detailed profit with degradation
                 battery_specs = self._get_battery_specs(
@@ -208,38 +221,71 @@ class ArbitrageOptimizer:
     ) -> Dict[str, Any]:
         """Make predictive arbitrage decisions using sensor data and energy forecasts."""
         
-        # Get configuration from sensors
-        max_battery_power = self.sensor_helper.get_max_battery_power()
-        min_arbitrage_margin = self.sensor_helper.get_min_arbitrage_margin()
-        max_daily_cycles = self.sensor_helper.get_max_daily_cycles()
-        
-        battery_level = current_state['battery_level']
-        battery_capacity = current_state['battery_capacity']
-        min_reserve = current_state['min_reserve_percent']
-        
-        # Calculate derived values directly  
-        pv_power = current_state['pv_power']
-        load_power = current_state['load_power']
-        surplus_power = max(0, pv_power - load_power)  # Positive when PV > Load
-        available_battery = calculate_available_battery_capacity(battery_level, battery_capacity, min_reserve)
-        
-        best_opportunity = opportunities[0] if opportunities else None
-        
-        # Check daily cycle limits using sensor data
+        # Check daily cycle limits first
         cycle_limit_check = self._check_daily_cycle_limits_from_sensors(data, current_state)
         if cycle_limit_check['blocked']:
             return {
                 "action": "hold",
                 "reason": cycle_limit_check['reason'],
                 "target_power": 0,
-                "target_battery_level": battery_level,
+                "target_battery_level": current_state['battery_level'],
                 "profit_forecast": 0,
                 "daily_cycles": cycle_limit_check['daily_cycles']
             }
         
-        # 🧠 PREDICTIVE ANALYSIS - NEW!
+        # Gather analysis data
+        analysis_data = self._gather_analysis_data(current_state, data)
+        
+        # Calculate available battery capacity for context
+        available_battery_capacity = calculate_available_battery_capacity(
+            current_state['battery_level'], 
+            current_state['battery_capacity'], 
+            current_state['min_reserve_percent']
+        )
+        current_state['available_battery_capacity'] = available_battery_capacity
+        
+        # Add analysis data to the data dict for handlers to access
+        data_with_analysis = dict(data)
+        data_with_analysis['analysis'] = analysis_data
+        
+        # Create decision context
+        context = DecisionContext(
+            current_state=current_state,
+            opportunities=opportunities,
+            data=data_with_analysis,
+            max_battery_power=self.sensor_helper.get_max_battery_power(),
+            min_arbitrage_margin=self.sensor_helper.get_min_arbitrage_margin(),
+            energy_strategy=analysis_data['energy_strategy'],
+            price_situation=analysis_data['price_situation'], 
+            strategic_recommendation=analysis_data['strategic_recommendation']
+        )
+        
+        # Process through decision handlers in priority order
+        for handler in self.decision_handlers:
+            if handler.can_handle(context):
+                _LOGGER.debug(f"Using {handler.__class__.__name__} for decision")
+                decision = handler.make_decision(context)
+                if decision:
+                    return self._convert_decision_to_dict(decision)
+        
+        # Fallback - should never reach here due to HoldDecisionHandler
+        return {
+            "action": "hold",
+            "reason": "🔄 FALLBACK: No decision handler available",
+            "target_power": 0,
+            "target_battery_level": current_state['battery_level'],
+            "profit_forecast": 0,
+            "strategy": "fallback"
+        }
+
+    def _gather_analysis_data(self, current_state: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any]:
+        """Gather all analysis data needed for decision making."""
+        
+        # 🧠 PREDICTIVE ANALYSIS
         try:
-            energy_strategy = self.energy_predictor.assess_battery_strategy(battery_level, battery_capacity)
+            energy_strategy = self.energy_predictor.assess_battery_strategy(
+                current_state['battery_level'], current_state['battery_capacity']
+            )
             energy_situation = self.energy_predictor.get_energy_situation_summary()
             
             _LOGGER.info(f"🔮 Energy forecast: {energy_situation}")
@@ -247,10 +293,14 @@ class ArbitrageOptimizer:
             
         except Exception as e:
             _LOGGER.warning(f"Predictive analysis failed, falling back to basic logic: {e}")
-            energy_strategy = {'recommendation': 'hold', 'urgency': 'low', 'target_battery_level': battery_level}
+            energy_strategy = {
+                'recommendation': 'hold', 
+                'urgency': 'low', 
+                'target_battery_level': current_state['battery_level']
+            }
             energy_situation = 'unknown'
         
-        # 🕐 TIME WINDOW ANALYSIS - NEW!
+        # 🕐 TIME WINDOW ANALYSIS  
         try:
             price_windows = self.time_analyzer.analyze_price_windows(data.get("price_data", {}), 24)
             price_situation = self.time_analyzer.get_current_price_situation(price_windows)
@@ -263,33 +313,28 @@ class ArbitrageOptimizer:
             price_windows = []
             price_situation = {'time_pressure': 'low', 'current_opportunities': 0}
         
-        # 🎯 STRATEGIC PLANNING - NEW! 
+        # 🎯 STRATEGIC PLANNING
         try:
-            # Update strategic plan every 30 minutes or when conditions change significantly
-            # FIXED: Use HA timezone for traditional arbitrage decisions
             now = get_current_ha_time(getattr(self.sensor_helper, 'hass', None))
             should_update_plan = (
                 self._last_plan_update is None or
-                (now - self._last_plan_update).total_seconds() > 1800 or  # 30 minutes
-                price_situation.get('time_pressure') in ['high', 'medium']  # Urgent and medium pressure situations need fresh plans
+                (now - self._last_plan_update).total_seconds() > STRATEGIC_PLAN_UPDATE_INTERVAL or
+                price_situation.get('time_pressure') in ['high', 'medium']
             )
             
             if should_update_plan:
-                _LOGGER.info(f"Strategic Plan: Creating new strategic plan. Last update: {self._last_plan_update}, Now: {now}")
+                _LOGGER.info(f"Strategic Plan: Creating new strategic plan. Last update: {self._last_plan_update}")
                 
-                # Get configured currency
-                # Use already imported constants
                 currency = self.coordinator.config.get(CONF_CURRENCY, DEFAULT_CURRENCY)
+                max_battery_power = self.sensor_helper.get_max_battery_power()
                 
                 strategic_plan = self.strategic_planner.create_comprehensive_plan(
-                    battery_level, battery_capacity, max_battery_power, data.get("price_data", {}), 48, currency
+                    current_state['battery_level'], current_state['battery_capacity'], 
+                    max_battery_power, data.get("price_data", {}), 48, currency
                 )
                 self._last_plan_update = now
                 _LOGGER.info(f"🎯 Strategic plan updated: {strategic_plan.scenario} ({len(strategic_plan.operations)} operations)")
-            else:
-                _LOGGER.debug(f"Strategic Plan: No update needed. Last update: {self._last_plan_update}, Time pressure: {price_situation.get('time_pressure', 'unknown')}")
             
-            # Get current strategic recommendation
             strategic_recommendation = self.strategic_planner.get_current_recommendation()
             
             _LOGGER.info(f"🧭 Strategic status: {strategic_recommendation.get('plan_status', 'unknown')}")
@@ -299,239 +344,39 @@ class ArbitrageOptimizer:
             _LOGGER.warning(f"Strategic planning failed: {e}")
             strategic_recommendation = {
                 "action": "hold",
-                "reason": "Strategic planning unavailable",
+                "reason": "Strategic planning unavailable", 
                 "confidence": 0.3,
                 "plan_status": "error"
             }
         
-        # 🎯 STRATEGIC DECISION MAKING (HIGHEST PRIORITY)
-        
-        # Strategic planner takes precedence if it has reasonable confidence recommendations
-        if (strategic_recommendation.get('confidence', 0) >= 0.7 and  # Lowered from 0.8 to 0.7
-            strategic_recommendation.get('plan_status') in ['executing', 'waiting', 'monitoring'] and  # Added monitoring
-            strategic_recommendation.get('action') != 'hold'):
-            
-            if strategic_recommendation['action'] == 'charge_arbitrage':
-                return {
-                    "action": "charge_arbitrage",
-                    "reason": strategic_recommendation['reason'],
-                    "target_power": strategic_recommendation.get('target_power', max_battery_power * 0.8),
-                    "target_battery_level": min(95, battery_level + 20),
-                    "profit_forecast": 0,  # Will be calculated by strategic planner
-                    "opportunity": {"strategic": True, "priority": strategic_recommendation.get('priority', 1)},
-                    "strategy": "strategic_plan",
-                    "plan_status": strategic_recommendation.get('plan_status'),
-                    "confidence": strategic_recommendation.get('confidence', 0.8)
-                }
-                
-            elif strategic_recommendation['action'] == 'sell_arbitrage':
-                return {
-                    "action": "sell_arbitrage",
-                    "reason": strategic_recommendation['reason'],
-                    "target_power": strategic_recommendation.get('target_power', -max_battery_power * 0.8),
-                    "target_battery_level": max(min_reserve, battery_level - 15),
-                    "profit_forecast": 0,  # Will be calculated by strategic planner
-                    "opportunity": {"strategic": True, "priority": strategic_recommendation.get('priority', 1)},
-                    "strategy": "strategic_plan",
-                    "plan_status": strategic_recommendation.get('plan_status'),
-                    "confidence": strategic_recommendation.get('confidence', 0.8)
-                }
-        
-        # 🎯 TIME-AWARE PREDICTIVE DECISION MAKING (FALLBACK)
-        
-        # Check for immediate time-sensitive opportunities (including medium pressure)
-        if price_situation.get('time_pressure') in ['high', 'medium'] and price_situation.get('immediate_action'):
-            immediate = price_situation['immediate_action']
-            urgency_prefix = "⚡ CRITICAL" if price_situation.get('time_pressure') == 'high' else "🚨 URGENT"
-            
-            if immediate['action'] == 'buy' and self.sensor_helper.is_battery_charging_viable():
-                # Immediate buy opportunity ending soon
-                if best_opportunity and best_opportunity.get('is_immediate_buy'):
-                    charge_power = min(max_battery_power, surplus_power if surplus_power > 0 else max_battery_power)
-                    return {
-                        "action": "charge_arbitrage",
-                        "reason": f"{urgency_prefix}: Buy window ending in {immediate['time_remaining']:.1f}h (Price: {immediate['price']:.3f})",
-                        "target_power": charge_power,
-                        "target_battery_level": min(95, battery_level + 20),
-                        "profit_forecast": best_opportunity.get('net_profit_per_kwh', 0) * (charge_power / 1000),
-                        "opportunity": best_opportunity,
-                        "strategy": "time_critical"
-                    }
-                    
-            elif immediate['action'] == 'sell' and available_battery > 1000:
-                # Immediate sell opportunity ending soon
-                if best_opportunity and best_opportunity.get('is_immediate_sell'):
-                    discharge_power = min(max_battery_power, available_battery / immediate['time_remaining'])
-                    return {
-                        "action": "sell_arbitrage", 
-                        "reason": f"{urgency_prefix}: Sell window ending in {immediate['time_remaining']:.1f}h (Price: {immediate['price']:.3f})",
-                        "target_power": -discharge_power,
-                        "target_battery_level": max(min_reserve, battery_level - 15),
-                        "profit_forecast": best_opportunity.get('net_profit_per_kwh', 0) * (discharge_power / 1000),
-                        "opportunity": best_opportunity,
-                        "strategy": "time_critical"
-                    }
-        
-        # Strategy-based decisions with time window validation
-        if energy_strategy['recommendation'] == 'charge_aggressive' and energy_strategy['urgency'] == 'high':
-            # High urgency charging - plan operation if time allows
-            if best_opportunity and best_opportunity.get('is_immediate_buy'):
-                
-                # Check if we have enough time to charge what we need
-                target_energy = (energy_strategy['target_battery_level'] - battery_level) / 100 * battery_capacity
-                planned_operation = self.time_analyzer.plan_battery_operation(
-                    target_energy, 'charge', price_windows, max_battery_power,
-                    data.get("price_data", {}).get("buy_prices", [])
-                )
-                
-                if planned_operation and planned_operation.feasible:
-                    # We can complete the planned operation
-                    return {
-                        "action": "charge_arbitrage",
-                        "reason": f"⚡ PLANNED: {energy_strategy['reason']} (Time: {planned_operation.duration_hours:.1f}h, ROI: {best_opportunity['roi_percent']:.1f}%)",
-                        "target_power": planned_operation.target_power_w,
-                        "target_battery_level": energy_strategy['target_battery_level'],
-                        "profit_forecast": best_opportunity['net_profit_per_kwh'] * (planned_operation.target_power_w / 1000),
-                        "opportunity": best_opportunity,
-                        "strategy": f"{energy_strategy['recommendation']}_planned",
-                        "completion_time": planned_operation.completion_time.isoformat()
-                    }
-                elif best_opportunity['roi_percent'] >= min_arbitrage_margin * 0.7:
-                    # Fallback to immediate charging with reduced margin
-                    charge_power = min(max_battery_power, surplus_power if surplus_power > 0 else max_battery_power)
-                    return {
-                        "action": "charge_arbitrage",
-                        "reason": f"⚡ IMMEDIATE: Limited time, charge now (ROI: {best_opportunity['roi_percent']:.1f}%)",
-                        "target_power": charge_power,
-                        "target_battery_level": min(95, battery_level + 15),  # Conservative target
-                        "profit_forecast": best_opportunity['net_profit_per_kwh'] * (charge_power / 1000),
-                        "opportunity": best_opportunity,
-                        "strategy": f"{energy_strategy['recommendation']}_immediate"
-                    }
-        
-        elif energy_strategy['recommendation'] == 'charge_moderate':
-            # Moderate charging with time planning
-            if best_opportunity and best_opportunity.get('is_immediate_buy') and best_opportunity['roi_percent'] >= min_arbitrage_margin:
-                
-                # Plan the operation if time permits
-                target_energy = (energy_strategy['target_battery_level'] - battery_level) / 100 * battery_capacity
-                planned_operation = self.time_analyzer.plan_battery_operation(
-                    target_energy, 'charge', price_windows, max_battery_power,
-                    data.get("price_data", {}).get("buy_prices", [])
-                )
-                
-                if planned_operation and planned_operation.feasible:
-                    return {
-                        "action": "charge_arbitrage",
-                        "reason": f"📊 PLANNED: {energy_strategy['reason']} (Time: {planned_operation.duration_hours:.1f}h, ROI: {best_opportunity['roi_percent']:.1f}%)",
-                        "target_power": planned_operation.target_power_w,
-                        "target_battery_level": energy_strategy['target_battery_level'],
-                        "profit_forecast": best_opportunity['net_profit_per_kwh'] * (planned_operation.target_power_w / 1000),
-                        "opportunity": best_opportunity,
-                        "strategy": f"{energy_strategy['recommendation']}_planned",
-                        "completion_time": planned_operation.completion_time.isoformat()
-                    }
-                else:
-                    # Standard charging if planning fails
-                    charge_power = min(max_battery_power, surplus_power if surplus_power > 0 else max_battery_power)
-                    return {
-                        "action": "charge_arbitrage",
-                        "reason": f"📊 STANDARD: {energy_strategy['reason']} (ROI: {best_opportunity['roi_percent']:.1f}%)",
-                        "target_power": charge_power,
-                        "target_battery_level": energy_strategy['target_battery_level'],
-                        "profit_forecast": best_opportunity['net_profit_per_kwh'] * (charge_power / 1000),
-                        "opportunity": best_opportunity,
-                        "strategy": energy_strategy['recommendation']
-                    }
-        
-        elif energy_strategy['recommendation'] in ['sell_aggressive', 'sell_partial']:
-            # Strategic selling
-            if (best_opportunity and best_opportunity.get('is_immediate_sell') and 
-                available_battery > 0 and self.sensor_helper.is_battery_discharging_viable()):
-                
-                # Respect strategy target level
-                max_discharge_wh = (battery_level - energy_strategy['target_battery_level']) / 100 * battery_capacity
-                max_discharge_wh = max(0, max_discharge_wh)
-                
-                if max_discharge_wh > 1000:  # At least 1kWh to sell
-                    discharge_power = min(max_battery_power, max_discharge_wh / 2)  # 2-hour discharge
-                    
-                    return {
-                        "action": "sell_arbitrage",
-                        "reason": f"💰 PREDICTIVE: {energy_strategy['reason']} (ROI: {best_opportunity['roi_percent']:.1f}%)",
-                        "target_power": -discharge_power,
-                        "target_battery_level": energy_strategy['target_battery_level'],
-                        "profit_forecast": best_opportunity['net_profit_per_kwh'] * (discharge_power / 1000),
-                        "opportunity": best_opportunity,
-                        "strategy": energy_strategy['recommendation']
-                    }
-        
-        # 📈 FALLBACK: Traditional arbitrage if no predictive action
-        # Priority 1: Immediate arbitrage sell if very profitable
-        if (best_opportunity and best_opportunity.get('is_immediate_sell') and 
-            available_battery > 0 and self.sensor_helper.is_battery_discharging_viable() and
-            best_opportunity['roi_percent'] >= min_arbitrage_margin * 1.5):  # Higher threshold for fallback
-            
-            discharge_power = min(max_battery_power, available_battery / 2)
-            return {
-                "action": "sell_arbitrage",
-                "reason": f"💸 TRADITIONAL: High ROI opportunity: {best_opportunity['roi_percent']:.1f}%",
-                "target_power": -discharge_power,
-                "target_battery_level": min_reserve + 5,
-                "profit_forecast": best_opportunity['net_profit_per_kwh'] * (discharge_power / 1000),
-                "opportunity": best_opportunity,
-                "strategy": "traditional"
-            }
-        
-        # Priority 2: Immediate arbitrage buy if very profitable
-        if (best_opportunity and best_opportunity.get('is_immediate_buy') and 
-            self.sensor_helper.is_battery_charging_viable() and
-            best_opportunity['roi_percent'] >= min_arbitrage_margin * 1.5):  # Higher threshold for fallback
-            
-            charge_power = min(max_battery_power, surplus_power if surplus_power > 0 else max_battery_power)
-            return {
-                "action": "charge_arbitrage", 
-                "reason": f"⚡ TRADITIONAL: High ROI opportunity: {best_opportunity['roi_percent']:.1f}%",
-                "target_power": charge_power,
-                "target_battery_level": 95.0,
-                "profit_forecast": best_opportunity['net_profit_per_kwh'] * (charge_power / 1000),
-                "opportunity": best_opportunity,
-                "strategy": "traditional"
-            }
-        # Default: Hold position with strategic insight
-        strategic_info = ""
-        if strategic_recommendation.get('plan_status') == 'waiting':
-            strategic_info = f" Strategic: {strategic_recommendation.get('reason', 'Planning')}"
-        elif price_situation.get('next_opportunity'):
-            next_opp = price_situation['next_opportunity']
-            strategic_info = f" Next: {next_opp['action']} in {next_opp['time_until_start']:.1f}h"
-        
-        # Choose the most informative hold reason
-        if strategic_recommendation.get('confidence', 0) > energy_strategy.get('confidence', 0):
-            hold_reason = f"🎯 STRATEGIC HOLD: {strategic_recommendation.get('reason', 'No strategic action')}{strategic_info}"
-            primary_confidence = strategic_recommendation.get('confidence', 0.5)
-            primary_strategy = "strategic"
-        else:
-            hold_reason = f"🔄 PREDICTIVE HOLD: {energy_strategy.get('reason', 'No beneficial action identified')}{strategic_info}"
-            primary_confidence = energy_strategy.get('confidence', 0.5)
-            primary_strategy = energy_strategy['recommendation']
-        
         return {
-            "action": "hold",
-            "reason": hold_reason,
-            "target_power": 0,
-            "target_battery_level": battery_level,
-            "profit_forecast": sum([op['net_profit_per_kwh'] for op in opportunities[:3]]),
-            "next_opportunity": best_opportunity,
-            "energy_situation": energy_situation,
-            "strategy": primary_strategy,
-            "confidence": primary_confidence,
-            "time_pressure": price_situation.get('time_pressure', 'low'),
-            "price_windows_count": len(price_windows),
-            "next_window": price_situation.get('next_opportunity'),
-            "strategic_status": strategic_recommendation.get('plan_status', 'no_plan'),
-            "strategic_confidence": strategic_recommendation.get('confidence', 0)
+            'energy_strategy': energy_strategy,
+            'energy_situation': energy_situation,
+            'price_windows': price_windows,
+            'price_situation': price_situation,
+            'strategic_recommendation': strategic_recommendation
         }
+    
+    def _convert_decision_to_dict(self, decision: DecisionResult) -> Dict[str, Any]:
+        """Convert DecisionResult to dictionary format expected by the coordinator."""
+        result = {
+            "action": decision.action,
+            "reason": decision.reason,
+            "target_power": decision.target_power,
+            "target_battery_level": decision.target_battery_level,
+            "profit_forecast": decision.profit_forecast,
+            "strategy": decision.strategy,
+            "confidence": decision.confidence
+        }
+        
+        if decision.opportunity:
+            result["opportunity"] = decision.opportunity
+        if decision.plan_status:
+            result["plan_status"] = decision.plan_status
+        if decision.completion_time:
+            result["completion_time"] = decision.completion_time
+            
+        return result
 
     def _is_current_time_window(self, time_string: str, tolerance_minutes: int = 30) -> bool:
         try:
@@ -553,9 +398,10 @@ class ArbitrageOptimizer:
             return False
 
     def _get_battery_specs(self, config: Dict[str, Any], options: Dict[str, Any]) -> Dict[str, float]:
-        # Get coordinator data for static config parameters
+        # Get coordinator data for static config parameters  
         coordinator_config = self.sensor_helper.coordinator.data.get('config', {})
         coordinator_options = self.sensor_helper.coordinator.data.get('options', {})
+        # Note: config and options parameters kept for API compatibility but using coordinator data
         
         return {
             'capacity': self.sensor_helper.get_battery_capacity(),  # Get current capacity from coordinator via sensor_helper
