@@ -236,27 +236,27 @@ class StrategicPlanner:
             
         elif "energy_surplus_both_days" in scenario:
             operations.extend(self._create_surplus_selling_operations(
-                price_windows, current_battery_level, battery_capacity_wh, max_power_w
+                price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency
             ))
             
         elif "energy_deficit_both_days" in scenario:
             operations.extend(self._create_deficit_charging_operations(
-                price_windows, current_battery_level, battery_capacity_wh, max_power_w
+                price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency
             ))
             
         elif "surplus_today_deficit_tomorrow" in scenario:
             operations.extend(self._create_transition_operations(
-                price_windows, energy_balances, current_battery_level, battery_capacity_wh, max_power_w, "surplus_to_deficit"
+                price_windows, energy_balances, current_battery_level, battery_capacity_wh, max_power_w, "surplus_to_deficit", currency
             ))
             
         elif "deficit_today_surplus_tomorrow" in scenario:
             operations.extend(self._create_transition_operations(
-                price_windows, energy_balances, current_battery_level, battery_capacity_wh, max_power_w, "deficit_to_surplus"
+                price_windows, energy_balances, current_battery_level, battery_capacity_wh, max_power_w, "deficit_to_surplus", currency
             ))
             
         elif "price_driven" in scenario:
             operations.extend(self._create_opportunistic_operations(
-                price_windows, current_battery_level, battery_capacity_wh, max_power_w
+                price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency
             ))
             
         # Always add monitoring holds between operations
@@ -345,7 +345,7 @@ class StrategicPlanner:
             
         return operations
     
-    def _create_surplus_selling_operations(self, price_windows, current_battery_level, battery_capacity_wh, max_power_w) -> List[PlannedOperation]:
+    def _create_surplus_selling_operations(self, price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency: str = "PLN") -> List[PlannedOperation]:
         """Create operations for selling surplus energy."""
         operations = []
         
@@ -382,7 +382,7 @@ class StrategicPlanner:
         
         return operations
     
-    def _create_deficit_charging_operations(self, price_windows, current_battery_level, battery_capacity_wh, max_power_w) -> List[PlannedOperation]:
+    def _create_deficit_charging_operations(self, price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency: str = "PLN") -> List[PlannedOperation]:
         """Create operations for charging during deficit periods."""
         operations = []
         
@@ -421,7 +421,7 @@ class StrategicPlanner:
         
         return operations
     
-    def _create_transition_operations(self, price_windows, energy_balances, current_battery_level, battery_capacity_wh, max_power_w, transition_type) -> List[PlannedOperation]:
+    def _create_transition_operations(self, price_windows, energy_balances, current_battery_level, battery_capacity_wh, max_power_w, transition_type, currency: str = "PLN") -> List[PlannedOperation]:
         """Create operations for transition scenarios."""
         operations = []
         
@@ -433,9 +433,9 @@ class StrategicPlanner:
             buy_windows = [w for w in price_windows if w.action == 'buy' and w.start_time.date() > ha_now.date()]
             
             # Moderate selling today
-            operations.extend(self._create_surplus_selling_operations(sell_windows + price_windows, current_battery_level, battery_capacity_wh, max_power_w))
+            operations.extend(self._create_surplus_selling_operations(sell_windows + price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency))
             # Strategic buying for tomorrow
-            operations.extend(self._create_deficit_charging_operations(buy_windows + price_windows, current_battery_level, battery_capacity_wh, max_power_w))
+            operations.extend(self._create_deficit_charging_operations(buy_windows + price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency))
             
         elif transition_type == "deficit_to_surplus":
             # Charge today, prepare to sell tomorrow  
@@ -445,13 +445,13 @@ class StrategicPlanner:
             sell_windows = [w for w in price_windows if w.action == 'sell' and w.start_time.date() > ha_now.date()]
             
             # Strategic charging today
-            operations.extend(self._create_deficit_charging_operations(buy_windows + price_windows, current_battery_level, battery_capacity_wh, max_power_w))
+            operations.extend(self._create_deficit_charging_operations(buy_windows + price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency))
             # Prepare selling for tomorrow
-            operations.extend(self._create_surplus_selling_operations(sell_windows + price_windows, current_battery_level, battery_capacity_wh, max_power_w))
+            operations.extend(self._create_surplus_selling_operations(sell_windows + price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency))
         
         return operations
     
-    def _create_opportunistic_operations(self, price_windows, current_battery_level, battery_capacity_wh, max_power_w) -> List[PlannedOperation]:
+    def _create_opportunistic_operations(self, price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency: str = "PLN") -> List[PlannedOperation]:
         """Create operations based purely on price opportunities."""
         operations = []
         
@@ -702,10 +702,18 @@ class StrategicPlanner:
     
     def get_current_plan(self) -> Optional[StrategicPlan]:
         """Get the currently active strategic plan."""
-        # FIXED: Use HA timezone for plan validity check
-        if self._current_plan and self._current_plan.valid_until > get_current_ha_time(getattr(self.sensor_helper, 'hass', None)):
-            return self._current_plan
-        return None
+        current_time = get_current_ha_time(getattr(self.sensor_helper, 'hass', None))
+        
+        if not self._current_plan:
+            _LOGGER.debug("Strategic Plan: No plan exists (_current_plan is None)")
+            return None
+            
+        if self._current_plan.valid_until <= current_time:
+            _LOGGER.info(f"Strategic Plan: Plan expired. Valid until {self._current_plan.valid_until}, current time {current_time}")
+            return None
+            
+        _LOGGER.debug(f"Strategic Plan: Active plan found. Valid until {self._current_plan.valid_until}, current time {current_time}")
+        return self._current_plan
     
     def get_current_recommendation(self) -> Dict[str, Any]:
         """Get current recommendation based on active plan."""

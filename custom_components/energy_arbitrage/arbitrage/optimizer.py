@@ -275,6 +275,8 @@ class ArbitrageOptimizer:
             )
             
             if should_update_plan:
+                _LOGGER.info(f"Strategic Plan: Creating new strategic plan. Last update: {self._last_plan_update}, Now: {now}")
+                
                 # Get configured currency
                 # Use already imported constants
                 currency = self.coordinator.config.get(CONF_CURRENCY, DEFAULT_CURRENCY)
@@ -284,6 +286,8 @@ class ArbitrageOptimizer:
                 )
                 self._last_plan_update = now
                 _LOGGER.info(f"🎯 Strategic plan updated: {strategic_plan.scenario} ({len(strategic_plan.operations)} operations)")
+            else:
+                _LOGGER.debug(f"Strategic Plan: No update needed. Last update: {self._last_plan_update}, Time pressure: {price_situation.get('time_pressure', 'unknown')}")
             
             # Get current strategic recommendation
             strategic_recommendation = self.strategic_planner.get_current_recommendation()
