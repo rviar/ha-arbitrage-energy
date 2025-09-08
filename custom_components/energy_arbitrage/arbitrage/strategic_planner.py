@@ -139,7 +139,7 @@ class StrategicPlanner:
             
             # Create the plan
             # Use HA timezone for strategic planning
-            from .utils import get_ha_timezone
+            # Use already imported get_ha_timezone
             ha_tz = get_ha_timezone(getattr(self.sensor_helper, 'hass', None))
             now = datetime.now(ha_tz)
             

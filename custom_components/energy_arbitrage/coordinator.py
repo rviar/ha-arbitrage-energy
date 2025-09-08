@@ -41,7 +41,7 @@ from .const import (
 )
 from .arbitrage.optimizer import ArbitrageOptimizer
 from .arbitrage.executor import ArbitrageExecutor
-from .arbitrage.utils import safe_float, safe_int
+from .arbitrage.utils import safe_float, safe_int, parse_datetime, get_ha_timezone, get_current_ha_time
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -90,8 +90,7 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
         if not price_data:
             return {}
         
-        # Import here to avoid circular imports
-        from .arbitrage.utils import parse_datetime, get_ha_timezone
+        # Use already imported functions
         
         # Get current time in HA timezone 
         ha_tz = get_ha_timezone(self.hass)
@@ -165,7 +164,6 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
             
             self.price_data["buy_prices"] = data
             # FIXED: Use HA timezone for price data timestamps
-            from .arbitrage.utils import get_current_ha_time
             self.price_data["last_updated"] = get_current_ha_time(self.hass)
             _LOGGER.debug(f"Stored buy prices: {len(data)} entries")
             # Trigger sensor update with fresh data
@@ -184,8 +182,7 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
                 _LOGGER.info(f"First sell price entry: {data[0]}")
             
             self.price_data["sell_prices"] = data
-            # FIXED: Use HA timezone for price data timestamps  
-            from .arbitrage.utils import get_current_ha_time
+            # FIXED: Use HA timezone for price data timestamps
             self.price_data["last_updated"] = get_current_ha_time(self.hass)
             _LOGGER.info(f"✅ Stored sell prices: {len(data)} entries")
             # Trigger sensor update with fresh data
@@ -361,7 +358,6 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
     def _get_price_data_age(self) -> Optional[int]:
         if self.price_data["last_updated"]:
             # FIXED: Use HA timezone for age calculation
-            from .arbitrage.utils import get_current_ha_time
             return (get_current_ha_time(self.hass) - self.price_data["last_updated"]).total_seconds()
         return None
 
@@ -369,7 +365,6 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
         if not self._manual_override_until:
             return False
         # FIXED: Use HA timezone for manual override check
-        from .arbitrage.utils import get_current_ha_time
         return get_current_ha_time(self.hass) < self._manual_override_until
 
     async def set_enabled(self, enabled: bool):
@@ -392,7 +387,6 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
 
     async def set_manual_override(self, hours: int):
         # FIXED: Use HA timezone for manual override timeout
-        from .arbitrage.utils import get_current_ha_time
         self._manual_override_until = get_current_ha_time(self.hass) + timedelta(hours=hours)
         await self.async_request_refresh()
 

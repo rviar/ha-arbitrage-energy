@@ -2,7 +2,11 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from typing import Any
-from .arbitrage.utils import get_current_ha_time, format_ha_time
+from .arbitrage.utils import get_current_ha_time, format_ha_time, safe_float
+from .arbitrage.predictor import EnergyBalancePredictor
+from .arbitrage.sensor_data_helper import SensorDataHelper
+from .arbitrage.strategic_planner import StrategicPlanner
+from .arbitrage.time_analyzer import TimeWindowAnalyzer
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
@@ -11,7 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.const import UnitOfPower, UnitOfEnergy, PERCENTAGE
 
-from .const import DOMAIN
+from .const import DOMAIN, CONF_CURRENCY, DEFAULT_CURRENCY
 from .coordinator import EnergyArbitrageCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -65,7 +69,7 @@ class EnergyArbitrageBaseSensor(CoordinatorEntity, SensorEntity):
         """Get the configured currency from the entry data."""
         config = self._entry.data
         options = self._entry.options
-        from .const import CONF_CURRENCY, DEFAULT_CURRENCY
+        # Use already imported constants
         return options.get(CONF_CURRENCY, config.get(CONF_CURRENCY, DEFAULT_CURRENCY))
 
     @property
@@ -507,8 +511,7 @@ class EnergyArbitrageEnergyForecastSensor(EnergyArbitrageBaseSensor):
             return "unknown"
         
         try:
-            from .arbitrage.predictor import EnergyBalancePredictor
-            from .arbitrage.sensor_data_helper import SensorDataHelper
+            # Use already imported classes
             
             sensor_helper = SensorDataHelper(self.hass, self.coordinator.entry.entry_id, self.coordinator)
             predictor = EnergyBalancePredictor(sensor_helper)
@@ -525,8 +528,7 @@ class EnergyArbitrageEnergyForecastSensor(EnergyArbitrageBaseSensor):
             return {}
         
         try:
-            from .arbitrage.predictor import EnergyBalancePredictor
-            from .arbitrage.sensor_data_helper import SensorDataHelper
+            # Use already imported classes
             
             sensor_helper = SensorDataHelper(self.hass, self.coordinator.entry.entry_id, self.coordinator)
             predictor = EnergyBalancePredictor(sensor_helper)
@@ -535,7 +537,7 @@ class EnergyArbitrageEnergyForecastSensor(EnergyArbitrageBaseSensor):
             balances = predictor.calculate_combined_balance()
             
             # Get battery strategy
-            from .arbitrage.utils import safe_float
+            # Use already imported safe_float
             battery_level = safe_float(self.hass.states.get(self.coordinator.config.get('battery_level_sensor')))
             battery_capacity = self.coordinator.data.get("battery_capacity", 15000)
             strategy = predictor.assess_battery_strategy(battery_level, battery_capacity)
@@ -592,10 +594,7 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
                 current_plan = self.coordinator.optimizer.strategic_planner.get_current_plan()
             else:
                 # Fallback: create new instance if optimizer not available
-                from .arbitrage.strategic_planner import StrategicPlanner
-                from .arbitrage.sensor_data_helper import SensorDataHelper  
-                from .arbitrage.predictor import EnergyBalancePredictor
-                from .arbitrage.time_analyzer import TimeWindowAnalyzer
+                # Use already imported classes
                 
                 sensor_helper = SensorDataHelper(self.hass, self.coordinator.entry.entry_id, self.coordinator)
                 energy_predictor = EnergyBalancePredictor(sensor_helper)
@@ -636,10 +635,7 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
                 current_plan = planner_instance.get_current_plan()
             else:
                 # Fallback: create new instance if optimizer not available
-                from .arbitrage.strategic_planner import StrategicPlanner
-                from .arbitrage.sensor_data_helper import SensorDataHelper
-                from .arbitrage.predictor import EnergyBalancePredictor
-                from .arbitrage.time_analyzer import TimeWindowAnalyzer
+                # Use already imported classes
                 
                 sensor_helper = SensorDataHelper(self.hass, self.coordinator.entry.entry_id, self.coordinator)
                 energy_predictor = EnergyBalancePredictor(sensor_helper)
@@ -754,8 +750,7 @@ class EnergyArbitragePriceWindowsSensor(EnergyArbitrageBaseSensor):
             return "no_data"
         
         try:
-            from .arbitrage.time_analyzer import TimeWindowAnalyzer
-            from .arbitrage.sensor_data_helper import SensorDataHelper
+            # Use already imported classes
             
             sensor_helper = SensorDataHelper(self.hass, self.coordinator.entry.entry_id, self.coordinator)
             time_analyzer = TimeWindowAnalyzer(sensor_helper)
@@ -792,8 +787,7 @@ class EnergyArbitragePriceWindowsSensor(EnergyArbitrageBaseSensor):
             return {}
         
         try:
-            from .arbitrage.time_analyzer import TimeWindowAnalyzer
-            from .arbitrage.sensor_data_helper import SensorDataHelper
+            # Use already imported classes
             
             sensor_helper = SensorDataHelper(self.hass, self.coordinator.entry.entry_id, self.coordinator)
             time_analyzer = TimeWindowAnalyzer(sensor_helper)

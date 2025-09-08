@@ -1,7 +1,8 @@
 import logging
 from datetime import datetime, timedelta, timezone
-from .utils import get_current_ha_time, get_ha_timezone, format_ha_time
+from .utils import get_current_ha_time, get_ha_timezone, format_ha_time, parse_datetime
 from typing import Dict, Any, List, Optional, Tuple
+from ..const import CONF_CURRENCY, DEFAULT_CURRENCY
 
 from .sensor_data_helper import SensorDataHelper
 from .predictor import EnergyBalancePredictor
@@ -275,7 +276,7 @@ class ArbitrageOptimizer:
             
             if should_update_plan:
                 # Get configured currency
-                from ..const import CONF_CURRENCY, DEFAULT_CURRENCY
+                # Use already imported constants
                 currency = self.coordinator.config.get(CONF_CURRENCY, DEFAULT_CURRENCY)
                 
                 strategic_plan = self.strategic_planner.create_comprehensive_plan(
@@ -527,7 +528,7 @@ class ArbitrageOptimizer:
 
     def _is_current_time_window(self, time_string: str, tolerance_minutes: int = 30) -> bool:
         try:
-            from .utils import parse_datetime, get_ha_timezone
+            # Use already imported functions
             
             # Parse window time to HA timezone
             window_time = parse_datetime(time_string, self.sensor_helper.hass)
