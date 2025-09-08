@@ -829,6 +829,10 @@ class EnergyArbitragePriceWindowsSensor(EnergyArbitrageBaseSensor):
             price_windows = time_analyzer.analyze_price_windows(price_data, 24)
             price_situation = time_analyzer.get_current_price_situation(price_windows)
             
+            # 🔧 FIX: Define buy/sell windows before using them
+            buy_windows = [w for w in price_windows if w.action == 'buy'][:3]
+            sell_windows = [w for w in price_windows if w.action == 'sell'][:3]
+            
             attributes = {
                 "total_windows": len(price_windows),
                 "current_opportunities": price_situation.get('current_opportunities', 0),
@@ -887,8 +891,7 @@ class EnergyArbitragePriceWindowsSensor(EnergyArbitrageBaseSensor):
                 })
             
             # Window details (up to 5 most relevant)
-            buy_windows = [w for w in price_windows if w.action == 'buy'][:3]
-            sell_windows = [w for w in price_windows if w.action == 'sell'][:3]
+            # Note: buy_windows and sell_windows already defined above
             
             for i, window in enumerate(buy_windows):
                 # Full timestamp with timezone for debugging
