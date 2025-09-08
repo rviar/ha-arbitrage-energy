@@ -379,7 +379,8 @@ class ArbitrageOptimizer:
                 # Check if we have enough time to charge what we need
                 target_energy = (energy_strategy['target_battery_level'] - battery_level) / 100 * battery_capacity
                 planned_operation = self.time_analyzer.plan_battery_operation(
-                    target_energy, 'charge', price_windows, max_battery_power
+                    target_energy, 'charge', price_windows, max_battery_power,
+                    data.get("price_data", {}).get("buy_prices", [])
                 )
                 
                 if planned_operation and planned_operation.feasible:
@@ -414,7 +415,8 @@ class ArbitrageOptimizer:
                 # Plan the operation if time permits
                 target_energy = (energy_strategy['target_battery_level'] - battery_level) / 100 * battery_capacity
                 planned_operation = self.time_analyzer.plan_battery_operation(
-                    target_energy, 'charge', price_windows, max_battery_power
+                    target_energy, 'charge', price_windows, max_battery_power,
+                    data.get("price_data", {}).get("buy_prices", [])
                 )
                 
                 if planned_operation and planned_operation.feasible:

@@ -10,6 +10,11 @@ from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
+# Import TYPE_CHECKING to avoid circular import
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .time_analyzer import PriceWindow
+
 _LOGGER = logging.getLogger(__name__)
 
 class OperationType(Enum):
@@ -102,6 +107,46 @@ class StrategicPlanner:
         self._current_plan: Optional[StrategicPlan] = None
         self._plan_history: List[StrategicPlan] = []
         
+    def _create_optimized_operation(self, operation_type: OperationType, window: 'PriceWindow', 
+                                    target_energy_wh: float, target_power_w: float, 
+                                    expected_price: float, confidence: float, priority: int, 
+                                    reason: str, price_data: List[Dict] = None) -> PlannedOperation:
+        """Create an optimized operation with optimal timing within the window."""
+        
+        # Calculate operation duration
+        operation_duration_hours = target_energy_wh / target_power_w if target_power_w > 0 else 1.0
+        
+        # Find optimal start time within window if price_data available
+        if price_data and hasattr(self.time_analyzer, 'get_optimal_operation_time'):
+            optimal_start_time, optimal_price = self.time_analyzer.get_optimal_operation_time(
+                window, price_data, operation_duration_hours
+            )
+            # Update price to actual optimal price if found
+            if optimal_price != window.price:
+                expected_price = optimal_price
+                _LOGGER.info(f"🎯 OPTIMIZED PRICING: {operation_type.value} at {optimal_start_time.strftime('%H:%M')} "
+                           f"using price {optimal_price:.4f} vs window average {window.price:.4f}")
+        else:
+            # Fallback to window start
+            optimal_start_time = window.start_time
+            
+        # Calculate end time from optimal start
+        operation_end_time = optimal_start_time + timedelta(hours=operation_duration_hours)
+        
+        return PlannedOperation(
+            operation_type=operation_type,
+            start_time=optimal_start_time,
+            end_time=operation_end_time,
+            target_energy_wh=target_energy_wh,
+            target_power_w=target_power_w,
+            expected_price=expected_price,
+            confidence=confidence,
+            priority=priority,
+            reason=reason,
+            dependencies=[],
+            alternatives=[]
+        )
+        
     def create_comprehensive_plan(self, 
                                 current_battery_level: float,
                                 battery_capacity_wh: float,
@@ -125,7 +170,7 @@ class StrategicPlanner:
             # Create operations based on scenario
             operations = self._create_scenario_operations(
                 scenario, energy_balances, energy_strategy, price_windows,
-                current_battery_level, battery_capacity_wh, max_power_w, currency
+                current_battery_level, battery_capacity_wh, max_power_w, currency, price_data
             )
             
             # Optimize operation sequence
@@ -220,14 +265,15 @@ class StrategicPlanner:
                                   current_battery_level: float,
                                   battery_capacity_wh: float,
                                   max_power_w: float,
-                                  currency: str = "PLN") -> List[PlannedOperation]:
+                                  currency: str = "PLN",
+                                  price_data: Dict[str, Any] = None) -> List[PlannedOperation]:
         """Create operations based on the identified scenario."""
         
         operations = []
         
         if "energy_critical_deficit" in scenario:
             operations.extend(self._create_critical_charging_operations(
-                price_windows, energy_strategy, current_battery_level, battery_capacity_wh, max_power_w
+                price_windows, energy_strategy, current_battery_level, battery_capacity_wh, max_power_w, price_data
             ))
             
         elif "energy_critical_surplus" in scenario:
@@ -265,7 +311,7 @@ class StrategicPlanner:
         
         return operations
     
-    def _create_critical_charging_operations(self, price_windows, energy_strategy, current_battery_level, battery_capacity_wh, max_power_w) -> List[PlannedOperation]:
+    def _create_critical_charging_operations(self, price_windows, energy_strategy, current_battery_level, battery_capacity_wh, max_power_w, price_data: Dict[str, Any] = None) -> List[PlannedOperation]:
         """Create urgent charging operations."""
         operations = []
         
@@ -286,18 +332,18 @@ class StrategicPlanner:
             window_energy = min(remaining_energy, window.max_energy_capacity(max_power_w))
             window_power = min(max_power_w, window_energy / window.duration_hours)
             
-            operation = PlannedOperation(
+            # 🚀 Use optimized operation creation with price data
+            buy_price_data = price_data.get("buy_prices", []) if price_data else []
+            operation = self._create_optimized_operation(
                 operation_type=OperationType.CHARGE_URGENT,
-                start_time=window.start_time,
-                end_time=window.start_time + timedelta(hours=window_energy / window_power),
+                window=window,
                 target_energy_wh=window_energy,
                 target_power_w=window_power,
                 expected_price=window.price,
                 confidence=window.confidence,
                 priority=1 if window.urgency == 'high' else 2,
                 reason=f"Critical charging: {window_energy:.0f}Wh needed for energy deficit",
-                dependencies=[],
-                alternatives=[]
+                price_data=buy_price_data
             )
             
             operations.append(operation)
