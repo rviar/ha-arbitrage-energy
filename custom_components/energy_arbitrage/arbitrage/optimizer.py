@@ -177,11 +177,11 @@ class ArbitrageOptimizer:
                 is_immediate_buy = abs(current_buy_price - min_buy_price_24h) < 0.001
                 is_immediate_sell = abs(current_sell_price - max_sell_price_24h) < 0.001
                 
+                # FIXED: Use HA timezone for arbitrage timestamps
+                ha_now = get_current_ha_time(getattr(self.sensor_helper, 'hass', None))
                 opportunities.append({
                     'buy_price': min_buy_price_24h,
                     'sell_price': max_sell_price_24h,
-                    # FIXED: Use HA timezone for arbitrage timestamps
-                    ha_now = get_current_ha_time(getattr(self.sensor_helper, 'hass', None))
                     'buy_time': (ha_now + timedelta(hours=12)).isoformat(),  # Approximation
                     'sell_time': (ha_now + timedelta(hours=18)).isoformat(),  # Approximation
                     'roi_percent': profit_details['roi_percent'],

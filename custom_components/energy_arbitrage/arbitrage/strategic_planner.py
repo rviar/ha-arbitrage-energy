@@ -638,10 +638,10 @@ class StrategicPlanner:
             ))
         
         # Add monitoring hold
+        # FIXED: Use HA timezone for conservative operation scheduling
+        ha_now = get_current_ha_time(getattr(self.sensor_helper, 'hass', None))
         operations.append(PlannedOperation(
             operation_type=OperationType.HOLD_PRESERVE,
-            # FIXED: Use HA timezone for conservative operation scheduling
-            ha_now = get_current_ha_time(getattr(self.sensor_helper, 'hass', None))
             start_time=ha_now + timedelta(hours=4),
             end_time=ha_now + timedelta(hours=24),
             target_energy_wh=0,
@@ -670,10 +670,10 @@ class StrategicPlanner:
     def _create_emergency_plan(self, current_battery_level: float, battery_capacity_wh: float) -> StrategicPlan:
         """Create an emergency plan when main planning fails."""
         
+        # FIXED: Use HA timezone for emergency operation scheduling
+        ha_now = get_current_ha_time(getattr(self.sensor_helper, 'hass', None))
         operation = PlannedOperation(
             operation_type=OperationType.HOLD_PRESERVE,
-            # FIXED: Use HA timezone for emergency operation scheduling
-            ha_now = get_current_ha_time(getattr(self.sensor_helper, 'hass', None))
             start_time=ha_now,
             end_time=ha_now + timedelta(hours=24),
             target_energy_wh=0,
@@ -686,9 +686,9 @@ class StrategicPlanner:
             alternatives=[]
         )
         
+        # FIXED: Use HA timezone for emergency plan timestamps
+        ha_now = get_current_ha_time(getattr(self.sensor_helper, 'hass', None))
         return StrategicPlan(
-            # FIXED: Use HA timezone for emergency plan timestamps
-            ha_now = get_current_ha_time(getattr(self.sensor_helper, 'hass', None))
             plan_id=f"emergency_{ha_now.strftime('%Y%m%d_%H%M%S')}",
             created_at=ha_now,
             valid_until=ha_now + timedelta(hours=24),
