@@ -283,12 +283,12 @@ class StrategicPlanner:
             
         elif "energy_surplus_both_days" in scenario:
             operations.extend(self._create_surplus_selling_operations(
-                price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency
+                price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency, price_data
             ))
             
         elif "energy_deficit_both_days" in scenario:
             operations.extend(self._create_deficit_charging_operations(
-                price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency
+                price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency, price_data
             ))
             
         elif "surplus_today_deficit_tomorrow" in scenario:
@@ -392,7 +392,7 @@ class StrategicPlanner:
             
         return operations
     
-    def _create_surplus_selling_operations(self, price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency: str = "PLN") -> List[PlannedOperation]:
+    def _create_surplus_selling_operations(self, price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency: str = "PLN", price_data: Dict[str, Any] = None) -> List[PlannedOperation]:
         """Create operations for selling surplus energy."""
         operations = []
         
@@ -410,18 +410,18 @@ class StrategicPlanner:
                 if window_energy > 200:  # Minimum 200Wh to make it worthwhile
                     window_power = min(max_power_w, window_energy / window.duration_hours)
                     
-                    operation = PlannedOperation(
+                    # 🚀 Use optimized operation creation with price data
+                    sell_price_data = price_data.get("sell_prices", []) if price_data else []
+                    operation = self._create_optimized_operation(
                         operation_type=OperationType.SELL_OPTIMAL,
-                        start_time=window.start_time,
-                        end_time=window.start_time + timedelta(hours=window_energy / window_power),
+                        window=window,
                         target_energy_wh=window_energy,
                         target_power_w=window_power,
                         expected_price=window.price,
                         confidence=window.confidence * 0.9,  # Slightly lower confidence for optimal operations
                         priority=3,
                         reason=f"Surplus selling: {window_energy:.0f}Wh at good price {currency} {window.price:.3f}",
-                        dependencies=[],
-                        alternatives=[]
+                        price_data=sell_price_data
                     )
                     
                     operations.append(operation)
@@ -429,7 +429,7 @@ class StrategicPlanner:
         
         return operations
     
-    def _create_deficit_charging_operations(self, price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency: str = "PLN") -> List[PlannedOperation]:
+    def _create_deficit_charging_operations(self, price_windows, current_battery_level, battery_capacity_wh, max_power_w, currency: str = "PLN", price_data: Dict[str, Any] = None) -> List[PlannedOperation]:
         """Create operations for charging during deficit periods."""
         operations = []
         
@@ -449,18 +449,18 @@ class StrategicPlanner:
                 if window_energy > 200:  # Minimum 200Wh
                     window_power = min(max_power_w, window_energy / window.duration_hours)
                     
-                    operation = PlannedOperation(
+                    # 🚀 Use optimized operation creation with price data
+                    buy_price_data = price_data.get("buy_prices", []) if price_data else []
+                    operation = self._create_optimized_operation(
                         operation_type=OperationType.CHARGE_OPTIMAL,
-                        start_time=window.start_time,
-                        end_time=window.start_time + timedelta(hours=window_energy / window_power),
+                        window=window,
                         target_energy_wh=window_energy,
                         target_power_w=window_power,
                         expected_price=window.price,
                         confidence=window.confidence * 0.9,
                         priority=3,
                         reason=f"Deficit charging: {window_energy:.0f}Wh at low price {currency} {window.price:.3f}",
-                        dependencies=[],
-                        alternatives=[]
+                        price_data=buy_price_data
                     )
                     
                     operations.append(operation)
