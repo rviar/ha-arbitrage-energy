@@ -266,7 +266,7 @@ class TimeWindowAnalyzer:
                             # Gap found, save current window and start new one
                             if current_window['count'] >= 1:  # At least 1 hour
                                 _LOGGER.debug(f"💾 Сохранение SELL окна: {current_window['start'].strftime('%H:%M')}-{current_window['end'].strftime('%H:%M')}, финальная цена={current_window['price']:.4f}")
-                                windows.append(self._create_sell_window(current_window))
+                                windows.append(self._create_sell_window(current_window, price_data))
                             
                             current_window = {
                                 'start': timestamp,
@@ -280,7 +280,7 @@ class TimeWindowAnalyzer:
                     _LOGGER.debug(f"❌ SELL: {timestamp.strftime('%d.%m %H:%M')} price={price:.4f} < {high_price_threshold * 0.9:.4f} - не подходит")
                     if current_window and current_window['count'] >= 1:
                         _LOGGER.debug(f"💾 Завершение SELL окна из-за низкой цены: {current_window['start'].strftime('%H:%M')}-{current_window['end'].strftime('%H:%M')}, финальная цена={current_window['price']:.4f}")
-                        windows.append(self._create_sell_window(current_window))
+                        windows.append(self._create_sell_window(current_window, price_data))
                     current_window = None
                     
             except Exception as e:
@@ -330,9 +330,15 @@ class TimeWindowAnalyzer:
         
         # Find peak times within this window if price_data is available
         if price_data:
+            _LOGGER.debug(f"🔍 BUY window: Ищем пиковые времена для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')} из {len(price_data)} ценовых точек")
             peak_times = self.find_peak_times_in_window(window, price_data, top_n=3)
             window.peak_times = peak_times
-            _LOGGER.debug(f"🔍 BUY window peak times: {[(t.strftime('%H:%M'), p) for t, p in peak_times[:3]]}")
+            if peak_times:
+                _LOGGER.debug(f"✅ BUY window найдены пиковые времена: {[(t.strftime('%H:%M'), p) for t, p in peak_times[:3]]}")
+            else:
+                _LOGGER.warning(f"⚠️ BUY window НЕ НАЙДЕНЫ пиковые времена для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}")
+        else:
+            _LOGGER.warning(f"⚠️ BUY window: price_data отсутствует для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}")
         
         return window
     
@@ -367,9 +373,15 @@ class TimeWindowAnalyzer:
         
         # Find peak times within this window if price_data is available
         if price_data:
+            _LOGGER.debug(f"🔍 SELL window: Ищем пиковые времена для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')} из {len(price_data)} ценовых точек")
             peak_times = self.find_peak_times_in_window(window, price_data, top_n=3)
             window.peak_times = peak_times
-            _LOGGER.debug(f"🔍 SELL window peak times: {[(t.strftime('%H:%M'), p) for t, p in peak_times[:3]]}")
+            if peak_times:
+                _LOGGER.debug(f"✅ SELL window найдены пиковые времена: {[(t.strftime('%H:%M'), p) for t, p in peak_times[:3]]}")
+            else:
+                _LOGGER.warning(f"⚠️ SELL window НЕ НАЙДЕНЫ пиковые времена для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}")
+        else:
+            _LOGGER.warning(f"⚠️ SELL window: price_data отсутствует для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}")
         
         return window
     
@@ -390,12 +402,16 @@ class TimeWindowAnalyzer:
             List of (timestamp, price) tuples sorted by price optimality
         """
         if not price_data:
+            _LOGGER.debug(f"🔍 find_peak_times_in_window: price_data пуст для {window.action} окна")
             return []
             
         # Extract times and prices within the window
         peak_times = []
+        found_in_window = 0
+        total_checked = 0
         for price_point in price_data:
             try:
+                total_checked += 1
                 timestamp_str = price_point.get('start', '')
                 price = price_point.get('value', 0)
                 
@@ -407,12 +423,16 @@ class TimeWindowAnalyzer:
                 # Check if timestamp is within window bounds
                 if window.start_time <= timestamp <= window.end_time:
                     peak_times.append((timestamp, price))
+                    found_in_window += 1
                     
             except Exception as e:
                 _LOGGER.debug(f"Error processing price point in window analysis: {e}")
                 continue
         
+        _LOGGER.debug(f"🔍 find_peak_times_in_window: Проверено {total_checked} точек, найдено в окне: {found_in_window}")
+        
         if not peak_times:
+            _LOGGER.warning(f"⚠️ find_peak_times_in_window: Ни одной точки не найдено в окне {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')} для {window.action}")
             return []
         
         # Sort by price optimality
@@ -427,6 +447,7 @@ class TimeWindowAnalyzer:
             _LOGGER.debug(f"🔍 BUY window {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}: "
                          f"Top prices: {[(t.strftime('%H:%M'), p) for t, p in peak_times[:top_n]]}")
         
+        _LOGGER.debug(f"✅ find_peak_times_in_window: Возвращаем {len(peak_times[:top_n])} лучших времен для {window.action}")
         return peak_times[:top_n]
     
     def get_optimal_operation_time(self, window: PriceWindow, 
