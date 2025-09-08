@@ -315,6 +315,10 @@ class TimeWindowAnalyzer:
         else:
             urgency = 'low'     # Starting later
         
+        # Calculate dynamic confidence based on window quality
+        base_confidence = 0.8
+        confidence = self._calculate_window_confidence(base_confidence, window_data, urgency, duration, price_data)
+        
         # Create preliminary window to find peak times
         window = PriceWindow(
             action='buy',
@@ -322,7 +326,7 @@ class TimeWindowAnalyzer:
             end_time=window_data['end'],
             price=window_data['price'],
             duration_hours=duration,
-            confidence=0.8,  # High confidence for price data
+            confidence=confidence,  # Dynamic confidence based on data quality
             urgency=urgency,
             hass=self.hass,
             peak_times=None  # Will be populated below
@@ -358,6 +362,10 @@ class TimeWindowAnalyzer:
         else:
             urgency = 'low'     # Starting later
         
+        # Calculate dynamic confidence based on window quality
+        base_confidence = 0.8
+        confidence = self._calculate_window_confidence(base_confidence, window_data, urgency, duration, price_data)
+        
         # Create preliminary window to find peak times
         window = PriceWindow(
             action='sell',
@@ -365,7 +373,7 @@ class TimeWindowAnalyzer:
             end_time=window_data['end'],
             price=window_data['price'],
             duration_hours=duration,
-            confidence=0.8,  # High confidence for price data
+            confidence=confidence,  # Dynamic confidence based on data quality
             urgency=urgency,
             hass=self.hass,
             peak_times=None  # Will be populated below
@@ -384,6 +392,56 @@ class TimeWindowAnalyzer:
             _LOGGER.warning(f"⚠️ SELL window: price_data отсутствует для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}")
         
         return window
+    
+    def _calculate_window_confidence(self, base_confidence: float, window_data: Dict, 
+                                    urgency: str, duration_hours: float, 
+                                    price_data: List[Dict] = None) -> float:
+        """Calculate dynamic confidence based on window quality factors."""
+        confidence = base_confidence
+        
+        # Adjust based on urgency (higher urgency = lower confidence due to time pressure)
+        urgency_multipliers = {
+            'high': 0.9,    # High urgency = slightly lower confidence
+            'medium': 1.0,  # Medium urgency = base confidence  
+            'low': 1.1      # Low urgency = higher confidence (more time to plan)
+        }
+        confidence *= urgency_multipliers.get(urgency, 1.0)
+        
+        # Adjust based on window duration (longer windows = higher confidence)
+        if duration_hours >= 4:
+            confidence *= 1.1  # Long windows = higher confidence
+        elif duration_hours <= 1:
+            confidence *= 0.9  # Short windows = lower confidence
+        
+        # Adjust based on data availability
+        if price_data:
+            data_points = len(price_data)
+            if data_points >= 24:  # Full day of data
+                confidence *= 1.05
+            elif data_points < 6:   # Limited data
+                confidence *= 0.85
+        else:
+            confidence *= 0.8  # No peak data available
+        
+        # Time distance factor (closer = higher confidence)
+        if 'start' in window_data:
+            ha_tz = get_ha_timezone(self.hass)
+            now = datetime.now(ha_tz)
+            hours_until = (window_data['start'] - now).total_seconds() / 3600
+            
+            if hours_until <= 2:    # Very soon
+                confidence *= 1.1
+            elif hours_until >= 24: # Far in future
+                confidence *= 0.9
+        
+        # Clamp between reasonable bounds
+        confidence = max(0.5, min(0.95, confidence))
+        
+        _LOGGER.debug(f"📊 Window confidence: base={base_confidence:.2f}, "
+                     f"urgency={urgency}({urgency_multipliers.get(urgency, 1.0):.1f}), "
+                     f"duration={duration_hours:.1f}h, final={confidence:.2f}")
+        
+        return confidence
     
     def find_peak_times_in_window(self, window: PriceWindow, 
                                   price_data: List[Dict], 

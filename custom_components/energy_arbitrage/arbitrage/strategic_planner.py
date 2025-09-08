@@ -146,6 +146,51 @@ class StrategicPlanner:
             dependencies=[],
             alternatives=[]
         )
+    
+    def _calculate_operation_confidence(self, window: 'PriceWindow', action: str, 
+                                      energy_wh: float, power_w: float) -> float:
+        """Calculate dynamic confidence for a specific operation."""
+        base_confidence = window.confidence
+        
+        # Adjust based on operation size relative to energy capacity
+        if energy_wh < 500:      # Small operations
+            base_confidence *= 0.9
+        elif energy_wh > 3000:   # Large operations
+            base_confidence *= 1.05
+        
+        # Adjust based on power level (efficiency factor)
+        if power_w >= 4000:      # High power = more efficient
+            base_confidence *= 1.03
+        elif power_w < 1000:     # Low power = less efficient
+            base_confidence *= 0.95
+        
+        # Adjust based on action type and window urgency combination
+        if action == "sell" and window.urgency == "high":
+            base_confidence *= 1.05  # High urgency selling = high confidence
+        elif action == "buy" and window.urgency == "low":
+            base_confidence *= 1.05  # Patient buying = high confidence
+        elif action == "sell" and window.urgency == "low":
+            base_confidence *= 0.95  # Non-urgent selling = lower confidence
+        elif action == "buy" and window.urgency == "high":
+            base_confidence *= 0.95  # Rushed buying = lower confidence
+        
+        # Account for peak times optimization
+        if hasattr(window, 'peak_times') and window.peak_times:
+            if len(window.peak_times) >= 3:
+                base_confidence *= 1.08  # Good peak data = higher confidence
+            elif len(window.peak_times) >= 1:
+                base_confidence *= 1.03  # Some peak data = slight boost
+        else:
+            base_confidence *= 0.92    # No peak optimization = lower confidence
+        
+        # Clamp to reasonable range
+        final_confidence = max(0.5, min(0.95, base_confidence))
+        
+        _LOGGER.debug(f"🎯 Operation confidence: window={window.confidence:.2f}, "
+                     f"{action}({energy_wh:.0f}Wh@{power_w:.0f}W), "
+                     f"urgency={window.urgency}, final={final_confidence:.2f}")
+        
+        return final_confidence
         
     def create_comprehensive_plan(self, 
                                 current_battery_level: float,
@@ -418,7 +463,7 @@ class StrategicPlanner:
                         target_energy_wh=window_energy,
                         target_power_w=window_power,
                         expected_price=window.price,
-                        confidence=window.confidence * 0.9,  # Slightly lower confidence for optimal operations
+                        confidence=self._calculate_operation_confidence(window, "sell", window_energy, window_power),
                         priority=3,
                         reason=f"Surplus selling: {window_energy:.0f}Wh at good price {currency} {window.price:.3f}",
                         price_data=sell_price_data
@@ -457,7 +502,7 @@ class StrategicPlanner:
                         target_energy_wh=window_energy,
                         target_power_w=window_power,
                         expected_price=window.price,
-                        confidence=window.confidence * 0.9,
+                        confidence=self._calculate_operation_confidence(window, "buy", window_energy, window_power),
                         priority=3,
                         reason=f"Deficit charging: {window_energy:.0f}Wh at low price {currency} {window.price:.3f}",
                         price_data=buy_price_data

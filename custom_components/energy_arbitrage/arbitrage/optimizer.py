@@ -306,9 +306,9 @@ class ArbitrageOptimizer:
         
         # 🎯 STRATEGIC DECISION MAKING (HIGHEST PRIORITY)
         
-        # Strategic planner takes precedence if it has high-confidence recommendations
-        if (strategic_recommendation.get('confidence', 0) >= 0.8 and 
-            strategic_recommendation.get('plan_status') in ['executing', 'waiting'] and
+        # Strategic planner takes precedence if it has reasonable confidence recommendations
+        if (strategic_recommendation.get('confidence', 0) >= 0.7 and  # Lowered from 0.8 to 0.7
+            strategic_recommendation.get('plan_status') in ['executing', 'waiting', 'monitoring'] and  # Added monitoring
             strategic_recommendation.get('action') != 'hold'):
             
             if strategic_recommendation['action'] == 'charge_arbitrage':
@@ -339,9 +339,10 @@ class ArbitrageOptimizer:
         
         # 🎯 TIME-AWARE PREDICTIVE DECISION MAKING (FALLBACK)
         
-        # Check for immediate time-sensitive opportunities
-        if price_situation.get('time_pressure') == 'high' and price_situation.get('immediate_action'):
+        # Check for immediate time-sensitive opportunities (including medium pressure)
+        if price_situation.get('time_pressure') in ['high', 'medium'] and price_situation.get('immediate_action'):
             immediate = price_situation['immediate_action']
+            urgency_prefix = "⚡ CRITICAL" if price_situation.get('time_pressure') == 'high' else "🚨 URGENT"
             
             if immediate['action'] == 'buy' and self.sensor_helper.is_battery_charging_viable():
                 # Immediate buy opportunity ending soon
@@ -349,7 +350,7 @@ class ArbitrageOptimizer:
                     charge_power = min(max_battery_power, surplus_power if surplus_power > 0 else max_battery_power)
                     return {
                         "action": "charge_arbitrage",
-                        "reason": f"⏰ TIME CRITICAL: Buy window ending in {immediate['time_remaining']:.1f}h (Price: {immediate['price']:.3f})",
+                        "reason": f"{urgency_prefix}: Buy window ending in {immediate['time_remaining']:.1f}h (Price: {immediate['price']:.3f})",
                         "target_power": charge_power,
                         "target_battery_level": min(95, battery_level + 20),
                         "profit_forecast": best_opportunity.get('net_profit_per_kwh', 0) * (charge_power / 1000),
@@ -363,7 +364,7 @@ class ArbitrageOptimizer:
                     discharge_power = min(max_battery_power, available_battery / immediate['time_remaining'])
                     return {
                         "action": "sell_arbitrage", 
-                        "reason": f"⏰ TIME CRITICAL: Sell window ending in {immediate['time_remaining']:.1f}h (Price: {immediate['price']:.3f})",
+                        "reason": f"{urgency_prefix}: Sell window ending in {immediate['time_remaining']:.1f}h (Price: {immediate['price']:.3f})",
                         "target_power": -discharge_power,
                         "target_battery_level": max(min_reserve, battery_level - 15),
                         "profit_forecast": best_opportunity.get('net_profit_per_kwh', 0) * (discharge_power / 1000),

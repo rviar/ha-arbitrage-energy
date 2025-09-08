@@ -29,7 +29,6 @@ async def async_setup_entry(
 
     entities = [
         # 🎯 Core decision sensors  
-        EnergyArbitrageProfitForecastSensor(coordinator, entry),
         EnergyArbitrageROISensor(coordinator, entry),
         EnergyArbitrageStatusSensor(coordinator, entry),
         
@@ -81,33 +80,6 @@ class EnergyArbitrageBaseSensor(CoordinatorEntity, SensorEntity):
             "model": "Energy Arbitrage System",
             "sw_version": "1.0.0",
         }
-
-# DELETED: NextActionSensor - duplicated strategic_plan.current_recommendation
-
-
-class EnergyArbitrageProfitForecastSensor(EnergyArbitrageBaseSensor):
-    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry, "profit_forecast")
-        self._attr_name = "Profit Forecast"
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        currency = self.currency
-        self._attr_native_unit_of_measurement = currency
-        currency_icons = {
-            "PLN": "mdi:currency-try",
-            "EUR": "mdi:currency-eur",
-            "USD": "mdi:currency-usd",
-            "CZK": "mdi:currency-try",
-            "SEK": "mdi:currency-try"
-        }
-        self._attr_icon = currency_icons.get(currency, "mdi:currency-eur")
-
-    @property
-    def native_value(self) -> float:
-        if not self.coordinator.data:
-            return 0.0
-        
-        decision = self.coordinator.data.get("decision", {})
-        return round(decision.get("profit_forecast", 0.0), 4)
 
 class EnergyArbitrageROISensor(EnergyArbitrageBaseSensor):
     def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
