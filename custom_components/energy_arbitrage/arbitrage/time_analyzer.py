@@ -13,6 +13,7 @@ from .constants import (
     URGENCY_HIGH_THRESHOLD_HOURS, URGENCY_MEDIUM_THRESHOLD_HOURS,
     PEAK_TIMES_TOP_N, TARGET_ENERGY_ACCEPTABLE_THRESHOLD, SECONDS_PER_HOUR
 )
+from .exceptions import safe_execute, log_performance
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -86,46 +87,43 @@ class TimeWindowAnalyzer:
         # Get HA timezone from sensor helper
         self.hass = getattr(sensor_helper, 'hass', None)
         
+    @safe_execute(default_return=[])
+    @log_performance
     def analyze_price_windows(self, price_data: Dict[str, Any], hours_ahead: int = 24) -> List[PriceWindow]:
         """Analyze price data to find optimal trading windows."""
         
-        try:
-            buy_prices = price_data.get("buy_prices", [])
-            sell_prices = price_data.get("sell_prices", [])
-            
-            if not buy_prices or not sell_prices:
-                _LOGGER.warning(f"Price data missing: buy_prices={len(buy_prices) if buy_prices else 0}, sell_prices={len(sell_prices) if sell_prices else 0}")
-                _LOGGER.debug(f"Available price_data keys: {list(price_data.keys())}")
-                return []
-            
-            # Debug current time and data range
-            ha_tz = get_ha_timezone(self.hass)
-            now = datetime.now(ha_tz)
-            _LOGGER.debug(f"🕐 Current HA time: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-            if buy_prices:
-                first_buy = buy_prices[0].get('start', 'unknown')
-                last_buy = buy_prices[-1].get('start', 'unknown')
-                _LOGGER.debug(f"📊 Buy data range: {first_buy} to {last_buy}")
-            if sell_prices:
-                first_sell = sell_prices[0].get('start', 'unknown')
-                last_sell = sell_prices[-1].get('start', 'unknown')
-                _LOGGER.debug(f"💰 Sell data range: {first_sell} to {last_sell}")
-            
-            # Find buy windows (low prices) and pass price data for peak analysis
-            buy_windows = self._find_low_price_windows(buy_prices, hours_ahead, price_data=buy_prices)
-            
-            # Find sell windows (high prices) and pass price data for peak analysis
-            sell_windows = self._find_high_price_windows(sell_prices, hours_ahead, price_data=sell_prices)
-            
-            # Combine and sort by urgency
-            all_windows = buy_windows + sell_windows
-            all_windows.sort(key=lambda w: (w.urgency != 'high', w.urgency != 'medium', w.start_time))
-            
-            return all_windows
-            
-        except Exception as e:
-            _LOGGER.error(f"Error analyzing price windows: {e}")
+        buy_prices = price_data.get("buy_prices", [])
+        sell_prices = price_data.get("sell_prices", [])
+        
+        if not buy_prices or not sell_prices:
+            _LOGGER.warning(f"Price data missing: buy_prices={len(buy_prices) if buy_prices else 0}, sell_prices={len(sell_prices) if sell_prices else 0}")
+            _LOGGER.debug(f"Available price_data keys: {list(price_data.keys())}")
             return []
+        
+        # Debug current time and data range
+        ha_tz = get_ha_timezone(self.hass)
+        now = datetime.now(ha_tz)
+        _LOGGER.debug(f"🕐 Current HA time: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        if buy_prices:
+            first_buy = buy_prices[0].get('start', 'unknown')
+            last_buy = buy_prices[-1].get('start', 'unknown')
+            _LOGGER.debug(f"📊 Buy data range: {first_buy} to {last_buy}")
+        if sell_prices:
+            first_sell = sell_prices[0].get('start', 'unknown')
+            last_sell = sell_prices[-1].get('start', 'unknown')
+            _LOGGER.debug(f"💰 Sell data range: {first_sell} to {last_sell}")
+        
+        # Find buy windows (low prices) and pass price data for peak analysis
+        buy_windows = self._find_low_price_windows(buy_prices, hours_ahead, price_data=buy_prices)
+        
+        # Find sell windows (high prices) and pass price data for peak analysis
+        sell_windows = self._find_high_price_windows(sell_prices, hours_ahead, price_data=sell_prices)
+        
+        # Combine and sort by urgency
+        all_windows = buy_windows + sell_windows
+        all_windows.sort(key=lambda w: (w.urgency != 'high', w.urgency != 'medium', w.start_time))
+        
+        return all_windows
     
     def _find_price_windows(self, prices: List[Dict], hours_ahead: int, 
                            action_type: str, price_data: List[Dict] = None) -> List[PriceWindow]:

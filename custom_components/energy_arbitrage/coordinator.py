@@ -41,6 +41,8 @@ from .const import (
 )
 from .arbitrage.optimizer import ArbitrageOptimizer
 from .arbitrage.executor import ArbitrageExecutor
+from .arbitrage.config_manager import ConfigManager
+from .arbitrage.exceptions import safe_execute, log_performance
 from .arbitrage.utils import safe_float, safe_int, parse_datetime, get_ha_timezone, get_current_ha_time
 
 _LOGGER = logging.getLogger(__name__)
@@ -52,9 +54,12 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
         self.config = entry.data
         self.options = entry.options
         
-        # Use configured update interval or default
-        configured_interval = self.config.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
-        update_interval = timedelta(minutes=configured_interval)
+        # Initialize centralized configuration manager
+        self.config_manager = ConfigManager(entry.data)
+        
+        # Use configured update interval or default (now through config manager)
+        system_specs = self.config_manager.get_system_specs()
+        update_interval = timedelta(minutes=system_specs.update_interval_minutes)
         
         super().__init__(
             hass,
@@ -79,6 +84,10 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
         self._emergency_mode = False
         self._force_charge = False
         self._manual_override_until = None
+        
+        # Performance optimization: Cache frequently accessed data
+        self._price_cache = {}
+        self._price_cache_timeout = 300  # 5 minutes cache timeout
 
     async def async_setup(self):
         await self._subscribe_mqtt_topics()
@@ -192,33 +201,37 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
             _LOGGER.error(f"Message topic: {message.topic}")
             _LOGGER.error(f"Message payload: {message.payload}")
 
+    @safe_execute(default_return={
+        "decision": {"action": "hold", "reason": "Update failed - safe mode"},
+        "enabled": True,
+        "emergency_mode": False,
+        "manual_override_until": None,
+        "price_data": {"buy_prices": [], "sell_prices": []}
+    })
+    @log_performance
     async def _async_update_data(self) -> Dict[str, Any]:
-        try:
-            import asyncio
-            async with asyncio.timeout(30):  # 30 second timeout for safety
-                data = await self._collect_sensor_data()
+        import asyncio
+        async with asyncio.timeout(30):  # 30 second timeout for safety
+            data = await self._collect_sensor_data()
+            
+            if not self._enabled or self._emergency_mode:
+                decision = {"action": "hold", "reason": "Disabled or emergency mode"}
+            elif self._is_manual_override_active():
+                decision = {"action": "manual_override", "reason": "Manual override active"}
+            else:
+                decision = await self.optimizer.calculate_optimal_action(data)
+                if decision["action"] != "hold":
+                    await self.executor.execute_decision(decision)
                 
-                if not self._enabled or self._emergency_mode:
-                    decision = {"action": "hold", "reason": "Disabled or emergency mode"}
-                elif self._is_manual_override_active():
-                    decision = {"action": "manual_override", "reason": "Manual override active"}
-                else:
-                    decision = await self.optimizer.calculate_optimal_action(data)
-                    if decision["action"] != "hold":
-                        await self.executor.execute_decision(decision)
-                
-                return {
-                    **data,
-                    "decision": decision,
-                    "enabled": self._enabled,
-                    "emergency_mode": self._emergency_mode,
-                    "force_charge": self._force_charge,
-                    "manual_override_until": self._manual_override_until,
-                    "price_data_age": self._get_price_data_age(),
-                }
-        except Exception as e:
-            _LOGGER.error(f"Error updating data: {e}")
-            raise UpdateFailed(f"Error fetching data: {e}")
+            return {
+                **data,
+                "decision": decision,
+                "enabled": self._enabled,
+                "emergency_mode": self._emergency_mode,
+                "force_charge": self._force_charge,
+                "manual_override_until": self._manual_override_until,
+                "price_data_age": self._get_price_data_age(),
+            }
 
     async def _collect_sensor_data(self) -> Dict[str, Any]:
         data = {}

@@ -9,6 +9,7 @@ from .utils import get_current_ha_time, get_ha_timezone
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from enum import Enum
+from .exceptions import safe_execute, PlanningError, log_performance
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -187,6 +188,8 @@ class StrategicPlanner:
         
         return final_confidence
         
+    @safe_execute(default_return=None)
+    @log_performance
     def create_comprehensive_plan(self, 
                                 current_battery_level: float,
                                 battery_capacity_wh: float,
@@ -196,29 +199,27 @@ class StrategicPlanner:
                                 currency: str = "PLN") -> StrategicPlan:
         """Create a comprehensive strategic plan."""
         
-        try:
-            # Gather all data needed for planning
-            planning_data = self._gather_planning_data(
-                current_battery_level, battery_capacity_wh, price_data, planning_horizon_hours
-            )
-            
-            # Create operations based on scenario
-            operations = self._create_scenario_operations(
-                planning_data['scenario'], planning_data['energy_balances'], 
-                planning_data['energy_strategy'], planning_data['price_windows'],
-                current_battery_level, battery_capacity_wh, max_power_w, currency, price_data
-            )
-            
-            # Optimize and finalize the plan
-            return self._optimize_and_finalize_plan(
-                operations, planning_data, current_battery_level, 
-                battery_capacity_wh, max_power_w, planning_horizon_hours, currency
-            )
-            
-        except Exception as e:
-            _LOGGER.error(f"Error creating strategic plan: {e}")
-            # Return a basic hold plan
-            return self._create_emergency_plan(current_battery_level, battery_capacity_wh)
+        # Gather all data needed for planning
+        planning_data = self._gather_planning_data(
+            current_battery_level, battery_capacity_wh, price_data, planning_horizon_hours
+        )
+        
+        # Create operations based on scenario
+        operations = self._create_scenario_operations(
+            planning_data['scenario'], planning_data['energy_balances'], 
+            planning_data['energy_strategy'], planning_data['price_windows'],
+            current_battery_level, battery_capacity_wh, max_power_w, currency, price_data
+        )
+        
+        # Optimize and finalize the plan
+        return self._optimize_and_finalize_plan(
+            operations, planning_data, current_battery_level, 
+            battery_capacity_wh, max_power_w, planning_horizon_hours, currency
+        )
+        
+    def _get_fallback_plan(self, current_battery_level: float, battery_capacity_wh: float) -> StrategicPlan:
+        """Get fallback plan when main planning fails."""
+        return self._create_emergency_plan(current_battery_level, battery_capacity_wh)
     
     def _gather_planning_data(self, current_battery_level: float, battery_capacity_wh: float, 
                              price_data: Dict[str, Any], planning_horizon_hours: int) -> Dict[str, Any]:

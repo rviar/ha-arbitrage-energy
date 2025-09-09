@@ -5,6 +5,7 @@ from typing import Dict, Any, List
 from ..const import CONF_CURRENCY, DEFAULT_CURRENCY
 
 from .sensor_data_helper import SensorDataHelper
+from .exceptions import safe_execute, OptimizationError, log_performance
 from .predictor import EnergyBalancePredictor
 from .time_analyzer import TimeWindowAnalyzer
 from .strategic_planner import StrategicPlanner
@@ -46,41 +47,39 @@ class ArbitrageOptimizer:
             HoldDecisionHandler(self.sensor_helper, self.time_analyzer)
         ]
 
+    @safe_execute(default_return={
+        "action": "hold",
+        "reason": "Calculation error - using safe defaults",
+        "target_power": 0,
+        "target_battery_level": FALLBACK_BATTERY_LEVEL_PERCENT,
+        "profit_forecast": 0,
+        "next_opportunity": None
+    })
+    @log_performance
     async def calculate_optimal_action(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        try:
-            # Log current state for debugging
-            self.sensor_helper.log_current_state()
-            
-            current_state = self._analyze_current_state_from_sensors()
-            arbitrage_opportunities = self._find_arbitrage_opportunities_from_sensors(data)
-            
-            decision = self._make_decision_from_sensors(current_state, arbitrage_opportunities, data)
-            
-            _LOGGER.info(
-                f"Arbitrage decision: {decision['action']} - {decision['reason']}"
-                f" (Battery: {current_state['battery_level']:.1f}%, "
-                f"Solar: {current_state['pv_power']:.0f}W, "
-                f"Load: {current_state['load_power']:.0f}W)"
-            )
-            
-            return decision
-            
-        except Exception as e:
-            _LOGGER.error(f"Error calculating optimal action: {e}")
-            # Return safe defaults instead of None
-            try:
-                battery_level = self.sensor_helper.get_battery_level() or FALLBACK_BATTERY_LEVEL_PERCENT
-            except Exception:
-                battery_level = FALLBACK_BATTERY_LEVEL_PERCENT
-            return {
-                "action": "hold",
-                "reason": f"Calculation error: {str(e)}",
-                "target_power": 0,
-                "target_battery_level": battery_level,  # Use current level instead of None
-                "profit_forecast": 0,
-                "next_opportunity": None
-            }
+        # Log current state for debugging
+        self.sensor_helper.log_current_state()
+        
+        current_state = self._analyze_current_state_from_sensors()
+        arbitrage_opportunities = self._find_arbitrage_opportunities_from_sensors(data)
+        
+        decision = self._make_decision_from_sensors(current_state, arbitrage_opportunities, data)
+        
+        _LOGGER.info(
+            f"Arbitrage decision: {decision['action']} - {decision['reason']}"
+            f" (Battery: {current_state['battery_level']:.1f}%, "
+            f"Solar: {current_state['pv_power']:.0f}W, "
+            f"Load: {current_state['load_power']:.0f}W)"
+        )
+        
+        return decision
 
+    @safe_execute(default_return={
+        'pv_power': 0, 'load_power': 0, 'battery_level': FALLBACK_BATTERY_LEVEL_PERCENT,
+        'battery_power': 0, 'grid_power': 0, 'surplus_power': 0, 'net_consumption': 0,
+        'available_battery_wh': 0, 'battery_capacity': 10000, 'min_reserve_percent': 20,
+        'charging': False, 'discharging': False
+    })
     def _analyze_current_state_from_sensors(self) -> Dict[str, Any]:
         """Analyze current state using only sensor data."""
         battery_level = self.sensor_helper.get_battery_level()
@@ -116,6 +115,7 @@ class ArbitrageOptimizer:
             'discharging': battery_power > 0,
         }
 
+    @safe_execute(default_return=[])
     def _find_arbitrage_opportunities_from_sensors(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Find arbitrage opportunities using sensor data."""
         # Get current prices from sensors

@@ -12,6 +12,7 @@ from .constants import (
     MAX_BATTERY_LEVEL
 )
 from .utils import calculate_arbitrage_profit
+from .exceptions import safe_execute, SensorDataError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,18 +62,22 @@ class SensorDataHelper:
         return self._get_sensor_value("current_sell_price") or 0.0
     
     
+    @safe_execute(default_return=0.0)
     def get_battery_level(self) -> float:
         """Get current battery level in %."""
         return self._get_sensor_value("input_battery_level") or 0.0
     
+    @safe_execute(default_return=0.0)
     def get_pv_power(self) -> float:
         """Get current PV power in W."""
         return self._get_sensor_value("input_pv_power") or 0.0
     
+    @safe_execute(default_return=0.0)
     def get_load_power(self) -> float:
         """Get current load power in W."""
         return self._get_sensor_value("input_load_power") or 0.0
     
+    @safe_execute(default_return=0.0)
     def get_grid_power(self) -> float:
         """Get current grid power in W."""
         return self._get_sensor_value("input_grid_power") or 0.0
