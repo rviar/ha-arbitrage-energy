@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "context7": {
-      "command": "path/to/context7/server",
-      "args": [],
-      "env": {}
-    }
-  }
-}
