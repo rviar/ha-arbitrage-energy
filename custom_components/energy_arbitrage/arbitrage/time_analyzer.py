@@ -127,30 +127,46 @@ class TimeWindowAnalyzer:
             _LOGGER.error(f"Error analyzing price windows: {e}")
             return []
     
-    def _find_low_price_windows(self, buy_prices: List[Dict], hours_ahead: int, price_data: List[Dict] = None) -> List[PriceWindow]:
-        """Find windows of low prices suitable for buying/charging."""
+    def _find_price_windows(self, prices: List[Dict], hours_ahead: int, 
+                           action_type: str, price_data: List[Dict] = None) -> List[PriceWindow]:
+        """Unified method to find price windows for both buying and selling."""
         
-        if not buy_prices:
+        if not prices:
             return []
         
-        # Sort prices to find bottom quartile  
-        sorted_prices = sorted(buy_prices, key=lambda p: p.get('value', float('inf')))
-        quartile_size = max(1, len(sorted_prices) // PRICE_QUARTILE_DIVISOR)
-        low_price_threshold = sorted_prices[quartile_size - 1].get('value', 0)
+        # Determine quartile and threshold based on action type
+        is_buy = action_type == 'buy'
         
-        # Find consecutive low-price periods
+        if is_buy:
+            # Sort prices to find bottom quartile for buying
+            sorted_prices = sorted(prices, key=lambda p: p.get('value', float('inf')))
+            quartile_size = max(1, len(sorted_prices) // PRICE_QUARTILE_DIVISOR)
+            threshold = sorted_prices[quartile_size - 1].get('value', 0)
+            multiplier = PRICE_TOLERANCE_HIGH_MULTIPLIER  # 1.1 for buy (allow 10% higher)
+        else:
+            # Sort prices to find top quartile for selling
+            sorted_prices = sorted(prices, key=lambda p: p.get('value', 0), reverse=True)
+            quartile_size = max(1, len(sorted_prices) // PRICE_QUARTILE_DIVISOR)
+            threshold = sorted_prices[quartile_size - 1].get('value', float('inf'))
+            multiplier = PRICE_TOLERANCE_LOW_MULTIPLIER   # 0.9 for sell (allow 10% lower)
+            
+            # Debug logging for sell analysis (maintain existing behavior)
+            _LOGGER.debug(f"📊 SELL анализ: {len(prices)} цен, топ {quartile_size} = {[p.get('value') for p in sorted_prices[:quartile_size]]}")
+            _LOGGER.debug(f"💎 Высокий порог: {threshold:.4f}, фильтр: {threshold * multiplier:.4f}")
+        
+        # Find consecutive price periods that meet criteria
         windows = []
         current_window = None
         
-        for price_point in buy_prices:
+        for price_point in prices:
             try:
-                price = price_point.get('value', float('inf'))  # 'value' instead of 'price'
-                timestamp_str = price_point.get('start', '')    # 'start' instead of 'timestamp'
+                price = price_point.get('value', float('inf') if is_buy else 0)
+                timestamp_str = price_point.get('start', '')
                 
                 # Parse timestamp using unified function
                 timestamp = parse_datetime(timestamp_str, self.hass)
                 if not timestamp:
-                    _LOGGER.warning(f"Failed to parse buy timestamp: {timestamp_str}")
+                    _LOGGER.warning(f"Failed to parse {action_type} timestamp: {timestamp_str}")
                     continue
                 
                 # Skip past prices
@@ -163,92 +179,15 @@ class TimeWindowAnalyzer:
                 if timestamp > now + timedelta(hours=hours_ahead):
                     continue
                 
-                # Check if price is low enough
-                if price <= low_price_threshold * PRICE_TOLERANCE_HIGH_MULTIPLIER:  # 10% tolerance
-                    
-                    if current_window is None:
-                        # Start new window
-                        current_window = {
-                            'start': timestamp,
-                            'end': timestamp + timedelta(hours=1),  # Assume 1h periods
-                            'price': price,
-                            'count': 1
-                        }
-                    else:
-                        # Extend current window if consecutive
-                        if timestamp <= current_window['end']:
-                            current_window['end'] = timestamp + timedelta(hours=1)
-                            current_window['price'] = min(current_window['price'], price)
-                            current_window['count'] += 1
-                        else:
-                            # Gap found, save current window and start new one
-                            if current_window['count'] >= 1:  # At least 1 hour
-                                windows.append(self._create_buy_window(current_window, price_data))
-                            
-                            current_window = {
-                                'start': timestamp,
-                                'end': timestamp + timedelta(hours=1),
-                                'price': price,
-                                'count': 1
-                            }
-                else:
-                    # Price too high, end current window
-                    if current_window and current_window['count'] >= 1:
-                        windows.append(self._create_buy_window(current_window, price_data))
-                    current_window = None
-                    
-            except Exception as e:
-                _LOGGER.debug(f"Error processing price point: {e}")
-                continue
-        
-        # Don't forget last window
-        if current_window and current_window['count'] >= 1:
-            windows.append(self._create_buy_window(current_window, price_data))
-        
-        return windows
-    
-    def _find_high_price_windows(self, sell_prices: List[Dict], hours_ahead: int, price_data: List[Dict] = None) -> List[PriceWindow]:
-        """Find windows of high prices suitable for selling/discharging."""
-        
-        if not sell_prices:
-            return []
-        
-        # Sort prices to find top quartile
-        sorted_prices = sorted(sell_prices, key=lambda p: p.get('value', 0), reverse=True)
-        quartile_size = max(1, len(sorted_prices) // PRICE_QUARTILE_DIVISOR)
-        high_price_threshold = sorted_prices[quartile_size - 1].get('value', float('inf'))
-        
-        _LOGGER.debug(f"📊 SELL анализ: {len(sell_prices)} цен, топ {quartile_size} = {[p.get('value') for p in sorted_prices[:quartile_size]]}")
-        _LOGGER.debug(f"💎 Высокий порог: {high_price_threshold:.4f}, фильтр: {high_price_threshold * 0.9:.4f}")
-        
-        # Find consecutive high-price periods
-        windows = []
-        current_window = None
-        
-        for price_point in sell_prices:
-            try:
-                price = price_point.get('value', 0)          # 'value' instead of 'price'
-                timestamp_str = price_point.get('start', '')  # 'start' instead of 'timestamp'
+                # Check if price meets criteria
+                price_meets_criteria = (
+                    price <= threshold * multiplier if is_buy else 
+                    price >= threshold * multiplier
+                )
                 
-                # Parse timestamp using unified function
-                timestamp = parse_datetime(timestamp_str, self.hass)
-                if not timestamp:
-                    _LOGGER.warning(f"Failed to parse sell timestamp: {timestamp_str}")
-                    continue
-                
-                # Skip past prices
-                ha_tz = get_ha_timezone(self.hass)
-                now = datetime.now(ha_tz)
-                if timestamp < now:
-                    continue
-                
-                # Skip prices too far in future
-                if timestamp > now + timedelta(hours=hours_ahead):
-                    continue
-                
-                # Check if price is high enough
-                if price >= high_price_threshold * PRICE_TOLERANCE_LOW_MULTIPLIER:  # 10% tolerance
-                    _LOGGER.debug(f"💰 SELL: {timestamp.strftime('%d.%m %H:%M')} price={price:.4f} >= {high_price_threshold * 0.9:.4f} - ПОДХОДИТ")
+                if price_meets_criteria:
+                    if not is_buy:  # Debug logging for sell windows (maintain existing behavior)
+                        _LOGGER.debug(f"💰 SELL: {timestamp.strftime('%d.%m %H:%M')} price={price:.4f} >= {threshold * multiplier:.4f} - ПОДХОДИТ")
                     
                     if current_window is None:
                         # Start new window
@@ -258,20 +197,32 @@ class TimeWindowAnalyzer:
                             'price': price,
                             'count': 1
                         }
-                        _LOGGER.debug(f"🪟 Начало нового SELL окна: {timestamp.strftime('%H:%M')}, цена={price:.4f}")
+                        if not is_buy:
+                            _LOGGER.debug(f"🪟 Начало нового SELL окна: {timestamp.strftime('%H:%M')}, цена={price:.4f}")
                     else:
                         # Extend current window if consecutive
                         if timestamp <= current_window['end']:
-                            old_price = current_window['price']
+                            if not is_buy:
+                                old_price = current_window['price']
                             current_window['end'] = timestamp + timedelta(hours=1)
-                            current_window['price'] = max(current_window['price'], price)
+                            # For buy: take minimum price, for sell: take maximum price
+                            current_window['price'] = (
+                                min(current_window['price'], price) if is_buy else 
+                                max(current_window['price'], price)
+                            )
                             current_window['count'] += 1
-                            _LOGGER.debug(f"📈 Расширение SELL окна: {timestamp.strftime('%H:%M')}, цена {old_price:.4f} → {current_window['price']:.4f}")
+                            if not is_buy:
+                                _LOGGER.debug(f"📈 Расширение SELL окна: {timestamp.strftime('%H:%M')}, цена {old_price:.4f} → {current_window['price']:.4f}")
                         else:
                             # Gap found, save current window and start new one
-                            if current_window['count'] >= 1:  # At least 1 hour
-                                _LOGGER.debug(f"💾 Сохранение SELL окна: {current_window['start'].strftime('%H:%M')}-{current_window['end'].strftime('%H:%M')}, финальная цена={current_window['price']:.4f}")
-                                windows.append(self._create_sell_window(current_window, price_data))
+                            if current_window['count'] >= 1:
+                                if not is_buy:
+                                    _LOGGER.debug(f"💾 Сохранение SELL окна: {current_window['start'].strftime('%H:%M')}-{current_window['end'].strftime('%H:%M')}, финальная цена={current_window['price']:.4f}")
+                                window = (
+                                    self._create_buy_window(current_window, price_data) if is_buy else
+                                    self._create_sell_window(current_window, price_data)
+                                )
+                                windows.append(window)
                             
                             current_window = {
                                 'start': timestamp,
@@ -279,13 +230,20 @@ class TimeWindowAnalyzer:
                                 'price': price,
                                 'count': 1
                             }
-                            _LOGGER.debug(f"🪟 Новое SELL окно после разрыва: {timestamp.strftime('%H:%M')}, цена={price:.4f}")
+                            if not is_buy:
+                                _LOGGER.debug(f"🪟 Новое SELL окно после разрыва: {timestamp.strftime('%H:%M')}, цена={price:.4f}")
                 else:
-                    # Price too low, end current window
-                    _LOGGER.debug(f"❌ SELL: {timestamp.strftime('%d.%m %H:%M')} price={price:.4f} < {high_price_threshold * 0.9:.4f} - не подходит")
+                    # Price doesn't meet criteria, end current window
+                    if not is_buy:
+                        _LOGGER.debug(f"❌ SELL: {timestamp.strftime('%d.%m %H:%M')} price={price:.4f} < {threshold * multiplier:.4f} - не подходит")
                     if current_window and current_window['count'] >= 1:
-                        _LOGGER.debug(f"💾 Завершение SELL окна из-за низкой цены: {current_window['start'].strftime('%H:%M')}-{current_window['end'].strftime('%H:%M')}, финальная цена={current_window['price']:.4f}")
-                        windows.append(self._create_sell_window(current_window, price_data))
+                        if not is_buy:
+                            _LOGGER.debug(f"💾 Завершение SELL окна из-за низкой цены: {current_window['start'].strftime('%H:%M')}-{current_window['end'].strftime('%H:%M')}, финальная цена={current_window['price']:.4f}")
+                        window = (
+                            self._create_buy_window(current_window, price_data) if is_buy else
+                            self._create_sell_window(current_window, price_data)
+                        )
+                        windows.append(window)
                     current_window = None
                     
             except Exception as e:
@@ -294,9 +252,23 @@ class TimeWindowAnalyzer:
         
         # Don't forget last window
         if current_window and current_window['count'] >= 1:
-            _LOGGER.debug(f"💾 Сохранение последнего SELL окна: {current_window['start'].strftime('%H:%M')}-{current_window['end'].strftime('%H:%M')}, финальная цена={current_window['price']:.4f}")
-            windows.append(self._create_sell_window(current_window, price_data))
+            window = (
+                self._create_buy_window(current_window, price_data) if is_buy else
+                self._create_sell_window(current_window, price_data)
+            )
+            windows.append(window)
         
+        return windows
+
+    def _find_low_price_windows(self, buy_prices: List[Dict], hours_ahead: int, price_data: List[Dict] = None) -> List[PriceWindow]:
+        """Find windows of low prices suitable for buying/charging."""
+        return self._find_price_windows(buy_prices, hours_ahead, 'buy', price_data)
+    
+    def _find_high_price_windows(self, sell_prices: List[Dict], hours_ahead: int, price_data: List[Dict] = None) -> List[PriceWindow]:
+        """Find windows of high prices suitable for selling/discharging."""
+        windows = self._find_price_windows(sell_prices, hours_ahead, 'sell', price_data)
+        
+        # Add the final logging that was in the original method
         _LOGGER.info(f"🏁 Найдено {len(windows)} SELL окон с высокими ценами")
         for i, win in enumerate(windows, 1):
             win_data = win if hasattr(win, 'start_time') else self._create_sell_window(win, price_data)

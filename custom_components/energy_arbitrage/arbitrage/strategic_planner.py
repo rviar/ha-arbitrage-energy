@@ -197,68 +197,97 @@ class StrategicPlanner:
         """Create a comprehensive strategic plan."""
         
         try:
-            # Get energy balance forecast
-            energy_balances = self.energy_predictor.calculate_combined_balance()
-            energy_strategy = self.energy_predictor.assess_battery_strategy(current_battery_level, battery_capacity_wh)
-            
-            # Get price windows
-            price_windows = self.time_analyzer.analyze_price_windows(price_data, planning_horizon_hours)
-            
-            # Determine the primary scenario
-            scenario = self._identify_scenario(energy_balances, energy_strategy, price_windows)
+            # Gather all data needed for planning
+            planning_data = self._gather_planning_data(
+                current_battery_level, battery_capacity_wh, price_data, planning_horizon_hours
+            )
             
             # Create operations based on scenario
             operations = self._create_scenario_operations(
-                scenario, energy_balances, energy_strategy, price_windows,
+                planning_data['scenario'], planning_data['energy_balances'], 
+                planning_data['energy_strategy'], planning_data['price_windows'],
                 current_battery_level, battery_capacity_wh, max_power_w, currency, price_data
             )
             
-            # Optimize operation sequence
-            operations = self._optimize_operation_sequence(operations, current_battery_level, battery_capacity_wh)
-            
-            # Calculate expected profit
-            expected_profit = self._calculate_plan_profit(operations)
-            
-            # Assess risk
-            risk_assessment = self._assess_plan_risk(operations, energy_balances)
-            
-            # Create the plan
-            ha_tz = get_ha_timezone(getattr(self.sensor_helper, 'hass', None))
-            now = datetime.now(ha_tz)
-            
-            plan = StrategicPlan(
-                plan_id=f"plan_{now.strftime('%Y%m%d_%H%M%S')}",
-                created_at=now,
-                valid_until=now + timedelta(hours=planning_horizon_hours),
-                operations=operations,
-                expected_profit=expected_profit,
-                risk_assessment=risk_assessment,
-                scenario=scenario,
-                confidence=min([op.confidence for op in operations] + [1.0]),
-                fallback_plan=None  # Will be created if needed
+            # Optimize and finalize the plan
+            return self._optimize_and_finalize_plan(
+                operations, planning_data, current_battery_level, 
+                battery_capacity_wh, max_power_w, planning_horizon_hours, currency
             )
-            
-            # Create fallback plan for high-risk scenarios
-            if risk_assessment == "high":
-                plan.fallback_plan = self._create_fallback_plan(plan, current_battery_level, battery_capacity_wh, max_power_w)
-            
-            # Store the plan
-            self._current_plan = plan
-            self._plan_history.append(plan)
-            
-            # Keep only last 5 plans
-            if len(self._plan_history) > 5:
-                self._plan_history = self._plan_history[-5:]
-            
-            _LOGGER.info(f"🎯 Strategic plan created: {scenario} ({len(operations)} operations, profit: {currency} {expected_profit:.2f})")
-            
-            return plan
             
         except Exception as e:
             _LOGGER.error(f"Error creating strategic plan: {e}")
             # Return a basic hold plan
             return self._create_emergency_plan(current_battery_level, battery_capacity_wh)
     
+    def _gather_planning_data(self, current_battery_level: float, battery_capacity_wh: float, 
+                             price_data: Dict[str, Any], planning_horizon_hours: int) -> Dict[str, Any]:
+        """Gather all data needed for strategic planning."""
+        
+        # Get energy balance forecast
+        energy_balances = self.energy_predictor.calculate_combined_balance()
+        energy_strategy = self.energy_predictor.assess_battery_strategy(current_battery_level, battery_capacity_wh)
+        
+        # Get price windows
+        price_windows = self.time_analyzer.analyze_price_windows(price_data, planning_horizon_hours)
+        
+        # Determine the primary scenario
+        scenario = self._identify_scenario(energy_balances, energy_strategy, price_windows)
+        
+        return {
+            'energy_balances': energy_balances,
+            'energy_strategy': energy_strategy,
+            'price_windows': price_windows,
+            'scenario': scenario
+        }
+    
+    def _optimize_and_finalize_plan(self, operations: List, planning_data: Dict[str, Any],
+                                   current_battery_level: float, battery_capacity_wh: float,
+                                   max_power_w: float, planning_horizon_hours: int,
+                                   currency: str) -> StrategicPlan:
+        """Optimize operations and create the final strategic plan."""
+        
+        # Optimize operation sequence
+        operations = self._optimize_operation_sequence(operations, current_battery_level, battery_capacity_wh)
+        
+        # Calculate expected profit
+        expected_profit = self._calculate_plan_profit(operations)
+        
+        # Assess risk
+        risk_assessment = self._assess_plan_risk(operations, planning_data['energy_balances'])
+        
+        # Create the plan
+        ha_tz = get_ha_timezone(getattr(self.sensor_helper, 'hass', None))
+        now = datetime.now(ha_tz)
+        
+        plan = StrategicPlan(
+            plan_id=f"plan_{now.strftime('%Y%m%d_%H%M%S')}",
+            created_at=now,
+            valid_until=now + timedelta(hours=planning_horizon_hours),
+            operations=operations,
+            expected_profit=expected_profit,
+            risk_assessment=risk_assessment,
+            scenario=planning_data['scenario'],
+            confidence=min([op.confidence for op in operations] + [1.0]),
+            fallback_plan=None  # Will be created if needed
+        )
+        
+        # Create fallback plan for high-risk scenarios
+        if risk_assessment == "high":
+            plan.fallback_plan = self._create_fallback_plan(plan, current_battery_level, battery_capacity_wh, max_power_w)
+        
+        # Store the plan
+        self._current_plan = plan
+        self._plan_history.append(plan)
+        
+        # Keep only last 5 plans
+        if len(self._plan_history) > 5:
+            self._plan_history = self._plan_history[-5:]
+        
+        _LOGGER.info(f"🎯 Strategic plan created: {planning_data['scenario']} ({len(operations)} operations, profit: {currency} {expected_profit:.2f})")
+        
+        return plan
+
     def _identify_scenario(self, energy_balances, energy_strategy, price_windows) -> str:
         """Identify the primary scenario for planning."""
         
