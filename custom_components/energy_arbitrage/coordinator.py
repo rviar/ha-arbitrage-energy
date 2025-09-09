@@ -91,9 +91,7 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
 
     async def async_setup(self):
         await self._subscribe_mqtt_topics()
-        
-    # REMOVED: Deprecated _get_current_time_utc method - use HA timezone directly
-    
+            
     def _find_current_price_entry(self, price_data: list) -> dict:
         """Find the current price entry based on start/end timestamps using HA timezone."""
         if not price_data:
@@ -113,13 +111,9 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
                 end_time = parse_datetime(entry.get('end', ''))
                 
                 if not start_time or not end_time:
-                    _LOGGER.debug(f"Could not parse timestamps in entry: {entry}")
                     continue
-                
-                _LOGGER.debug(f"Checking period {start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}")
-                
+                                
                 if start_time <= current_time < end_time:
-                    _LOGGER.debug(f"Found current period: {entry}")
                     return entry
                     
             except (KeyError, ValueError) as e:
@@ -154,28 +148,19 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
             )
             
             self._mqtt_unsubs = [buy_unsub, sell_unsub]
-            _LOGGER.info(f"✅ Subscribed to MQTT topics:")
-            _LOGGER.info(f"   📊 BUY:  {buy_topic}")
-            _LOGGER.info(f"   💰 SELL: {sell_topic}")
+            _LOGGER.info(f"✅ Subscribed to MQTT topics: 📊 BUY:  {buy_topic} | 💰 SELL: {sell_topic}")
         except Exception as e:
             _LOGGER.error(f"❌ Failed to subscribe to MQTT topics: {e}")
-            _LOGGER.error(f"   BUY topic: {buy_topic}")  
-            _LOGGER.error(f"   SELL topic: {sell_topic}")
 
     @callback
     def _handle_buy_price_message(self, message):
         try:
-            _LOGGER.debug(f"Raw buy price message payload: {message.payload}")
             data = json.loads(message.payload)
-            _LOGGER.debug(f"Parsed buy price data type: {type(data)}, length: {len(data) if isinstance(data, list) else 'N/A'}")
             if isinstance(data, list) and len(data) > 0:
                 _LOGGER.debug(f"First buy price entry: {data[0]}")
             
             self.price_data["buy_prices"] = data
-            # FIXED: Use HA timezone for price data timestamps
             self.price_data["last_updated"] = get_current_ha_time()
-            _LOGGER.debug(f"Stored buy prices: {len(data)} entries")
-            # Trigger sensor update with fresh data
             self.hass.async_create_task(self.async_request_refresh())
         except Exception as e:
             _LOGGER.error(f"Error parsing buy price message: {e}")
@@ -184,17 +169,12 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
     def _handle_sell_price_message(self, message):
         try:
             _LOGGER.info(f"🔥 SELL PRICE MESSAGE RECEIVED! Topic: {message.topic}")
-            _LOGGER.debug(f"Raw sell price message payload: {message.payload}")
             data = json.loads(message.payload)
-            _LOGGER.info(f"✅ Parsed sell price data: type={type(data)}, length={len(data) if isinstance(data, list) else 'N/A'}")
             if isinstance(data, list) and len(data) > 0:
                 _LOGGER.info(f"First sell price entry: {data[0]}")
             
             self.price_data["sell_prices"] = data
-            # FIXED: Use HA timezone for price data timestamps
             self.price_data["last_updated"] = get_current_ha_time()
-            _LOGGER.info(f"✅ Stored sell prices: {len(data)} entries")
-            # Trigger sensor update with fresh data
             self.hass.async_create_task(self.async_request_refresh())
         except Exception as e:
             _LOGGER.error(f"❌ Error parsing sell price message: {e}")

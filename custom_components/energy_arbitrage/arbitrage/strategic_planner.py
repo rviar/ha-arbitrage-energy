@@ -826,7 +826,7 @@ class StrategicPlanner:
             return None
             
         if self._current_plan.valid_until <= current_time:
-            _LOGGER.info(f"Strategic Plan: Plan expired. Valid until {self._current_plan.valid_until}, current time {current_time}")
+            _LOGGER.debug(f"Strategic Plan: Plan expired. Valid until {self._current_plan.valid_until}, current time {current_time}")
             return None
             
         _LOGGER.debug(f"Strategic Plan: Active plan found. Valid until {self._current_plan.valid_until}, current time {current_time}")

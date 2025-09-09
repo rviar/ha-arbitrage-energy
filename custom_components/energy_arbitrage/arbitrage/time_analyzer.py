@@ -231,9 +231,6 @@ class TimeWindowAnalyzer:
                             if not is_buy:
                                 _LOGGER.debug(f"🪟 Новое SELL окно после разрыва: {timestamp.strftime('%H:%M')}, цена={price:.4f}")
                 else:
-                    # Price doesn't meet criteria, end current window
-                    if not is_buy:
-                        _LOGGER.debug(f"❌ SELL: {timestamp.strftime('%d.%m %H:%M')} price={price:.4f} < {threshold * multiplier:.4f} - не подходит")
                     if current_window and current_window['count'] >= 1:
                         if not is_buy:
                             _LOGGER.debug(f"💾 Завершение SELL окна из-за низкой цены: {current_window['start'].strftime('%H:%M')}-{current_window['end'].strftime('%H:%M')}, финальная цена={current_window['price']:.4f}")
