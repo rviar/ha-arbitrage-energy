@@ -13,7 +13,14 @@ from .decision_handlers import (
     StrategicDecisionHandler, TimeCriticalDecisionHandler, 
     PredictiveDecisionHandler, TraditionalArbitrageHandler, HoldDecisionHandler
 )
-from .constants import STRATEGIC_PLAN_UPDATE_INTERVAL
+from .constants import (
+    STRATEGIC_PLAN_UPDATE_INTERVAL, PRICE_ANALYSIS_24H_WINDOW,
+    ENERGY_CALCULATION_1KWH, PRICE_COMPARISON_TOLERANCE,
+    FUTURE_BUY_TIME_OFFSET, FUTURE_SELL_TIME_OFFSET,
+    DEFAULT_BATTERY_COST, DEFAULT_BATTERY_CYCLES, DEFAULT_DEGRADATION_FACTOR,
+    TIME_WINDOW_TOLERANCE_MINUTES, FALLBACK_BATTERY_LEVEL_PERCENT,
+    FALLBACK_CONFIDENCE_LEVEL
+)
 from .utils import (
     calculate_available_battery_capacity, 
     calculate_arbitrage_profit
@@ -62,9 +69,9 @@ class ArbitrageOptimizer:
             _LOGGER.error(f"Error calculating optimal action: {e}")
             # Return safe defaults instead of None
             try:
-                battery_level = self.sensor_helper.get_battery_level() or 50.0
+                battery_level = self.sensor_helper.get_battery_level() or FALLBACK_BATTERY_LEVEL_PERCENT
             except Exception:
-                battery_level = 50.0
+                battery_level = FALLBACK_BATTERY_LEVEL_PERCENT
             return {
                 "action": "hold",
                 "reason": f"Calculation error: {str(e)}",
@@ -120,8 +127,8 @@ class ArbitrageOptimizer:
         sell_prices = price_data.get("sell_prices", [])
         
         # Find current extremes (fallback for traditional arbitrage)
-        min_buy_price_24h = min([p.get('value', float('inf')) for p in buy_prices[:24]], default=0.0)  # 'value'
-        max_sell_price_24h = max([p.get('value', 0) for p in sell_prices[:24]], default=0.0)        # 'value'
+        min_buy_price_24h = min([p.get('value', float('inf')) for p in buy_prices[:PRICE_ANALYSIS_24H_WINDOW]], default=0.0)  # 'value'
+        max_sell_price_24h = max([p.get('value', 0) for p in sell_prices[:PRICE_ANALYSIS_24H_WINDOW]], default=0.0)        # 'value'
         
         # Get configuration from sensors
         min_margin = self.sensor_helper.get_min_arbitrage_margin()
@@ -145,7 +152,7 @@ class ArbitrageOptimizer:
                                     self.sensor_helper.coordinator.data.get('config', {}).get('include_degradation', True))
                 
                 # Assume 1kWh transaction for calculation
-                energy_amount_wh = 1000  # 1 kWh in Wh
+                energy_amount_wh = ENERGY_CALCULATION_1KWH  # 1 kWh in Wh
                 profit_details = calculate_arbitrage_profit(
                     current_buy_price, current_sell_price, energy_amount_wh,
                     battery_efficiency, battery_specs, include_degradation
@@ -181,23 +188,23 @@ class ArbitrageOptimizer:
                                     self.sensor_helper.coordinator.data.get('config', {}).get('include_degradation', True))
                 
                 # Assume 1kWh transaction for calculation
-                energy_amount_wh = 1000  # 1 kWh in Wh
+                energy_amount_wh = ENERGY_CALCULATION_1KWH  # 1 kWh in Wh
                 profit_details = calculate_arbitrage_profit(
                     min_buy_price_24h, max_sell_price_24h, energy_amount_wh,
                     battery_efficiency, battery_specs, include_degradation
                 )
                 
                 # Determine if we should buy or sell now
-                is_immediate_buy = abs(current_buy_price - min_buy_price_24h) < 0.001
-                is_immediate_sell = abs(current_sell_price - max_sell_price_24h) < 0.001
+                is_immediate_buy = abs(current_buy_price - min_buy_price_24h) < PRICE_COMPARISON_TOLERANCE
+                is_immediate_sell = abs(current_sell_price - max_sell_price_24h) < PRICE_COMPARISON_TOLERANCE
                 
                 # FIXED: Use HA timezone for arbitrage timestamps
                 ha_now = get_current_ha_time(getattr(self.sensor_helper, 'hass', None))
                 opportunities.append({
                     'buy_price': min_buy_price_24h,
                     'sell_price': max_sell_price_24h,
-                    'buy_time': (ha_now + timedelta(hours=12)).isoformat(),  # Approximation
-                    'sell_time': (ha_now + timedelta(hours=18)).isoformat(),  # Approximation
+                    'buy_time': (ha_now + timedelta(hours=FUTURE_BUY_TIME_OFFSET)).isoformat(),  # Approximation
+                    'sell_time': (ha_now + timedelta(hours=FUTURE_SELL_TIME_OFFSET)).isoformat(),  # Approximation
                     'roi_percent': profit_details['roi_percent'],
                     'net_profit_per_kwh': profit_details['net_profit'],
                     'degradation_cost': profit_details['degradation_cost'],
@@ -302,7 +309,7 @@ class ArbitrageOptimizer:
         
         # 🕐 TIME WINDOW ANALYSIS  
         try:
-            price_windows = self.time_analyzer.analyze_price_windows(data.get("price_data", {}), 24)
+            price_windows = self.time_analyzer.analyze_price_windows(data.get("price_data", {}), PRICE_ANALYSIS_24H_WINDOW)
             price_situation = self.time_analyzer.get_current_price_situation(price_windows)
             
             _LOGGER.info(f"⏰ Price windows found: {len(price_windows)} opportunities")
@@ -345,7 +352,7 @@ class ArbitrageOptimizer:
             strategic_recommendation = {
                 "action": "hold",
                 "reason": "Strategic planning unavailable", 
-                "confidence": 0.3,
+                "confidence": FALLBACK_CONFIDENCE_LEVEL,
                 "plan_status": "error"
             }
         
@@ -378,7 +385,7 @@ class ArbitrageOptimizer:
             
         return result
 
-    def _is_current_time_window(self, time_string: str, tolerance_minutes: int = 30) -> bool:
+    def _is_current_time_window(self, time_string: str, tolerance_minutes: int = TIME_WINDOW_TOLERANCE_MINUTES) -> bool:
         try:
             # Use already imported functions
             
@@ -405,9 +412,9 @@ class ArbitrageOptimizer:
         
         return {
             'capacity': self.sensor_helper.get_battery_capacity(),  # Get current capacity from coordinator via sensor_helper
-            'cost': coordinator_options.get('battery_cost', coordinator_config.get('battery_cost', 7500)),
-            'cycles': coordinator_options.get('battery_cycles', coordinator_config.get('battery_cycles', 6000)),
-            'degradation_factor': coordinator_options.get('degradation_factor', coordinator_config.get('degradation_factor', 1.0))
+            'cost': coordinator_options.get('battery_cost', coordinator_config.get('battery_cost', DEFAULT_BATTERY_COST)),
+            'cycles': coordinator_options.get('battery_cycles', coordinator_config.get('battery_cycles', DEFAULT_BATTERY_CYCLES)),
+            'degradation_factor': coordinator_options.get('degradation_factor', coordinator_config.get('degradation_factor', DEFAULT_DEGRADATION_FACTOR))
         }
 
 

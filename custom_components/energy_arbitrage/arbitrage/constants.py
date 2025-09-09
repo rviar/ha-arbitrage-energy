@@ -57,3 +57,36 @@ FALLBACK_BATTERY_RESERVE_PERCENT = 50  # Fallback minimum battery reserve
 
 # Time Tolerance
 TIME_WINDOW_TOLERANCE_MINUTES = 30  # Tolerance for time window matching
+
+# Price Analysis Windows
+PRICE_ANALYSIS_24H_WINDOW = 24  # Hours for 24-hour price extremes analysis
+TOP_RESULTS_LIMIT = 3  # Maximum number of top results to consider
+
+# Energy Calculations
+ENERGY_CALCULATION_1KWH = 1000  # 1kWh in Wh for profit calculations
+PRICE_COMPARISON_TOLERANCE = 0.001  # Tolerance for price equality comparison
+
+# Time Approximations (hours)
+FUTURE_BUY_TIME_OFFSET = 12  # Hours offset for future buy time approximation
+FUTURE_SELL_TIME_OFFSET = 18  # Hours offset for future sell time approximation
+
+# Battery Specifications (defaults)
+DEFAULT_BATTERY_COST = 7500  # Default battery cost in currency units
+DEFAULT_BATTERY_CYCLES = 6000  # Default battery cycle life
+DEFAULT_DEGRADATION_FACTOR = 1.0  # Default battery degradation factor
+
+# Price Window Analysis
+PRICE_QUARTILE_DIVISOR = 4  # Divisor for quartile calculations
+PRICE_TOLERANCE_HIGH_MULTIPLIER = 1.1  # 110% for upper price tolerance
+PRICE_TOLERANCE_LOW_MULTIPLIER = 0.9  # 90% for lower price tolerance
+
+# Urgency Thresholds (hours)
+URGENCY_HIGH_THRESHOLD_HOURS = 1  # High urgency if starting within 1 hour
+URGENCY_MEDIUM_THRESHOLD_HOURS = 4  # Medium urgency if starting within 4 hours
+
+# Peak Time Analysis
+PEAK_TIMES_TOP_N = 3  # Number of peak times to identify per window
+
+# Fallback Values
+FALLBACK_BATTERY_LEVEL_PERCENT = 50.0  # Fallback battery level when sensors fail
+FALLBACK_CONFIDENCE_LEVEL = 0.3  # Fallback confidence for error conditions

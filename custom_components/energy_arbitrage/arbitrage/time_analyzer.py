@@ -8,6 +8,11 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 from .utils import get_current_ha_time, get_ha_timezone, parse_datetime
+from .constants import (
+    PRICE_QUARTILE_DIVISOR, PRICE_TOLERANCE_HIGH_MULTIPLIER, PRICE_TOLERANCE_LOW_MULTIPLIER,
+    URGENCY_HIGH_THRESHOLD_HOURS, URGENCY_MEDIUM_THRESHOLD_HOURS,
+    PEAK_TIMES_TOP_N, TARGET_ENERGY_ACCEPTABLE_THRESHOLD, SECONDS_PER_HOUR
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -130,7 +135,7 @@ class TimeWindowAnalyzer:
         
         # Sort prices to find bottom quartile  
         sorted_prices = sorted(buy_prices, key=lambda p: p.get('value', float('inf')))
-        quartile_size = max(1, len(sorted_prices) // 4)
+        quartile_size = max(1, len(sorted_prices) // PRICE_QUARTILE_DIVISOR)
         low_price_threshold = sorted_prices[quartile_size - 1].get('value', 0)
         
         # Find consecutive low-price periods
@@ -159,7 +164,7 @@ class TimeWindowAnalyzer:
                     continue
                 
                 # Check if price is low enough
-                if price <= low_price_threshold * 1.1:  # 10% tolerance
+                if price <= low_price_threshold * PRICE_TOLERANCE_HIGH_MULTIPLIER:  # 10% tolerance
                     
                     if current_window is None:
                         # Start new window
@@ -210,7 +215,7 @@ class TimeWindowAnalyzer:
         
         # Sort prices to find top quartile
         sorted_prices = sorted(sell_prices, key=lambda p: p.get('value', 0), reverse=True)
-        quartile_size = max(1, len(sorted_prices) // 4)
+        quartile_size = max(1, len(sorted_prices) // PRICE_QUARTILE_DIVISOR)
         high_price_threshold = sorted_prices[quartile_size - 1].get('value', float('inf'))
         
         _LOGGER.debug(f"📊 SELL анализ: {len(sell_prices)} цен, топ {quartile_size} = {[p.get('value') for p in sorted_prices[:quartile_size]]}")
@@ -242,7 +247,7 @@ class TimeWindowAnalyzer:
                     continue
                 
                 # Check if price is high enough
-                if price >= high_price_threshold * 0.9:  # 10% tolerance
+                if price >= high_price_threshold * PRICE_TOLERANCE_LOW_MULTIPLIER:  # 10% tolerance
                     _LOGGER.debug(f"💰 SELL: {timestamp.strftime('%d.%m %H:%M')} price={price:.4f} >= {high_price_threshold * 0.9:.4f} - ПОДХОДИТ")
                     
                     if current_window is None:
@@ -308,9 +313,9 @@ class TimeWindowAnalyzer:
         now = datetime.now(ha_tz)
         time_until_start = (window_data['start'] - now).total_seconds() / 3600
         
-        if time_until_start <= 1:
+        if time_until_start <= URGENCY_HIGH_THRESHOLD_HOURS:
             urgency = 'high'    # Starting soon
-        elif time_until_start <= 4:
+        elif time_until_start <= URGENCY_MEDIUM_THRESHOLD_HOURS:
             urgency = 'medium'  # Starting in a few hours
         else:
             urgency = 'low'     # Starting later
@@ -335,7 +340,7 @@ class TimeWindowAnalyzer:
         # Find peak times within this window if price_data is available
         if price_data:
             _LOGGER.debug(f"🔍 BUY window: Ищем пиковые времена для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')} из {len(price_data)} ценовых точек")
-            peak_times = self.find_peak_times_in_window(window, price_data, top_n=3)
+            peak_times = self.find_peak_times_in_window(window, price_data, top_n=PEAK_TIMES_TOP_N)
             window.peak_times = peak_times
             if peak_times:
                 _LOGGER.debug(f"✅ BUY window найдены пиковые времена: {[(t.strftime('%H:%M'), p) for t, p in peak_times[:3]]}")
@@ -355,9 +360,9 @@ class TimeWindowAnalyzer:
         now = datetime.now(ha_tz)
         time_until_start = (window_data['start'] - now).total_seconds() / 3600
         
-        if time_until_start <= 1:
+        if time_until_start <= URGENCY_HIGH_THRESHOLD_HOURS:
             urgency = 'high'    # Starting soon
-        elif time_until_start <= 4:
+        elif time_until_start <= URGENCY_MEDIUM_THRESHOLD_HOURS:
             urgency = 'medium'  # Starting in a few hours
         else:
             urgency = 'low'     # Starting later
@@ -382,7 +387,7 @@ class TimeWindowAnalyzer:
         # Find peak times within this window if price_data is available
         if price_data:
             _LOGGER.debug(f"🔍 SELL window: Ищем пиковые времена для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')} из {len(price_data)} ценовых точек")
-            peak_times = self.find_peak_times_in_window(window, price_data, top_n=3)
+            peak_times = self.find_peak_times_in_window(window, price_data, top_n=PEAK_TIMES_TOP_N)
             window.peak_times = peak_times
             if peak_times:
                 _LOGGER.debug(f"✅ SELL window найдены пиковые времена: {[(t.strftime('%H:%M'), p) for t, p in peak_times[:3]]}")
@@ -445,7 +450,7 @@ class TimeWindowAnalyzer:
     
     def find_peak_times_in_window(self, window: PriceWindow, 
                                   price_data: List[Dict], 
-                                  top_n: int = 3) -> List[Tuple[datetime, float]]:
+                                  top_n: int = PEAK_TIMES_TOP_N) -> List[Tuple[datetime, float]]:
         """Find peak price times within a specific window.
         
         For sell windows: finds times with highest prices
@@ -618,7 +623,7 @@ class TimeWindowAnalyzer:
                 target_power_w=max_power_w,
                 duration_hours=best_window.duration_hours,
                 window=best_window,
-                feasible=max_energy >= target_energy_wh * 0.8,  # 80% of target is acceptable
+                feasible=max_energy >= target_energy_wh * TARGET_ENERGY_ACCEPTABLE_THRESHOLD,  # 80% of target is acceptable
                 completion_time=best_window.end_time
             )
         
@@ -659,7 +664,7 @@ class TimeWindowAnalyzer:
             }
             
             # High time pressure if current window ends soon
-            if best_current.time_remaining.total_seconds() < 3600:  # < 1 hour
+            if best_current.time_remaining.total_seconds() < SECONDS_PER_HOUR:  # < 1 hour
                 situation['time_pressure'] = 'high'
         
         # Check upcoming windows
@@ -674,7 +679,7 @@ class TimeWindowAnalyzer:
             }
             
             # Medium pressure if next opportunity is soon
-            if next_window.time_until_start.total_seconds() < 7200:  # < 2 hours
+            if next_window.time_until_start.total_seconds() < (2 * SECONDS_PER_HOUR):  # < 2 hours
                 situation['time_pressure'] = max(situation['time_pressure'], 'medium')
         
         return situation
