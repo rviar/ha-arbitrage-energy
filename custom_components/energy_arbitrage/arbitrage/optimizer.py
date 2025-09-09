@@ -162,8 +162,8 @@ class ArbitrageOptimizer:
                     'buy_price': current_buy_price,
                     'sell_price': current_sell_price,
                     # FIXED: Use HA timezone for arbitrage timestamps
-                    'buy_time': get_current_ha_time(getattr(self.sensor_helper, 'hass', None)).isoformat(),
-                    'sell_time': get_current_ha_time(getattr(self.sensor_helper, 'hass', None)).isoformat(),
+                    'buy_time': get_current_ha_time().isoformat(),
+                    'sell_time': get_current_ha_time().isoformat(),
                     'roi_percent': profit_details['roi_percent'],
                     'net_profit_per_kwh': profit_details['net_profit'],
                     'degradation_cost': profit_details['degradation_cost'],
@@ -199,7 +199,7 @@ class ArbitrageOptimizer:
                 is_immediate_sell = abs(current_sell_price - max_sell_price_24h) < PRICE_COMPARISON_TOLERANCE
                 
                 # FIXED: Use HA timezone for arbitrage timestamps
-                ha_now = get_current_ha_time(getattr(self.sensor_helper, 'hass', None))
+                ha_now = get_current_ha_time()
                 opportunities.append({
                     'buy_price': min_buy_price_24h,
                     'sell_price': max_sell_price_24h,
@@ -322,7 +322,7 @@ class ArbitrageOptimizer:
         
         # 🎯 STRATEGIC PLANNING
         try:
-            now = get_current_ha_time(getattr(self.sensor_helper, 'hass', None))
+            now = get_current_ha_time()
             should_update_plan = (
                 self._last_plan_update is None or
                 (now - self._last_plan_update).total_seconds() > STRATEGIC_PLAN_UPDATE_INTERVAL or
@@ -390,12 +390,12 @@ class ArbitrageOptimizer:
             # Use already imported functions
             
             # Parse window time to HA timezone
-            window_time = parse_datetime(time_string, self.sensor_helper.hass)
+            window_time = parse_datetime(time_string)
             if not window_time:
                 return False
                 
             # Get current time in HA timezone
-            ha_tz = get_ha_timezone(self.sensor_helper.hass)
+            ha_tz = get_ha_timezone()
             current_time = datetime.now(ha_tz)
             
             time_diff = abs((window_time - current_time).total_seconds() / 60)

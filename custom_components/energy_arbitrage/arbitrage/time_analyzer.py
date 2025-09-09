@@ -33,7 +33,7 @@ class PriceWindow:
     @property
     def is_current(self) -> bool:
         """True if window is happening now."""
-        ha_tz = get_ha_timezone(self.hass)
+        ha_tz = get_ha_timezone()
         now = datetime.now(ha_tz)
         # Use same logic as utils.get_current_price_data for consistency
         return self.start_time <= now < self.end_time
@@ -41,21 +41,21 @@ class PriceWindow:
     @property
     def is_upcoming(self) -> bool:
         """True if window is in the future."""
-        ha_tz = get_ha_timezone(self.hass)
+        ha_tz = get_ha_timezone()
         now = datetime.now(ha_tz)
         return now < self.start_time
     
     @property
     def time_until_start(self) -> timedelta:
         """Time until window starts."""
-        ha_tz = get_ha_timezone(self.hass)
+        ha_tz = get_ha_timezone()
         now = datetime.now(ha_tz)
         return max(timedelta(0), self.start_time - now)
     
     @property
     def time_remaining(self) -> timedelta:
         """Time remaining in current window."""
-        ha_tz = get_ha_timezone(self.hass)
+        ha_tz = get_ha_timezone()
         now = datetime.now(ha_tz)
         if self.is_current:
             return max(timedelta(0), self.end_time - now)
@@ -85,7 +85,7 @@ class TimeWindowAnalyzer:
         self.sensor_helper = sensor_helper
         self._price_history = []  # Cache for price data analysis
         # Get HA timezone from sensor helper
-        self.hass = getattr(sensor_helper, 'hass', None)
+        self.hass = sensor_helper.hass
         
     @safe_execute(default_return=[])
     @log_performance
@@ -101,7 +101,7 @@ class TimeWindowAnalyzer:
             return []
         
         # Debug current time and data range
-        ha_tz = get_ha_timezone(self.hass)
+        ha_tz = get_ha_timezone()
         now = datetime.now(ha_tz)
         _LOGGER.debug(f"🕐 Current HA time: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
         if buy_prices:
@@ -162,13 +162,13 @@ class TimeWindowAnalyzer:
                 timestamp_str = price_point.get('start', '')
                 
                 # Parse timestamp using unified function
-                timestamp = parse_datetime(timestamp_str, self.hass)
+                timestamp = parse_datetime(timestamp_str)
                 if not timestamp:
                     _LOGGER.warning(f"Failed to parse {action_type} timestamp: {timestamp_str}")
                     continue
                 
                 # Skip past prices
-                ha_tz = get_ha_timezone(self.hass)
+                ha_tz = get_ha_timezone()
                 now = datetime.now(ha_tz)
                 if timestamp < now:
                     continue
@@ -279,7 +279,7 @@ class TimeWindowAnalyzer:
         duration = (window_data['end'] - window_data['start']).total_seconds() / 3600
         
         # Determine urgency based on timing and duration
-        ha_tz = get_ha_timezone(self.hass)
+        ha_tz = get_ha_timezone()
         now = datetime.now(ha_tz)
         time_until_start = (window_data['start'] - now).total_seconds() / 3600
         
@@ -326,7 +326,7 @@ class TimeWindowAnalyzer:
         duration = (window_data['end'] - window_data['start']).total_seconds() / 3600
         
         # Determine urgency based on timing and duration
-        ha_tz = get_ha_timezone(self.hass)
+        ha_tz = get_ha_timezone()
         now = datetime.now(ha_tz)
         time_until_start = (window_data['start'] - now).total_seconds() / 3600
         
@@ -400,7 +400,7 @@ class TimeWindowAnalyzer:
         
         # Time distance factor (closer = higher confidence)
         if 'start' in window_data:
-            ha_tz = get_ha_timezone(self.hass)
+            ha_tz = get_ha_timezone()
             now = datetime.now(ha_tz)
             hours_until = (window_data['start'] - now).total_seconds() / 3600
             
@@ -449,7 +449,7 @@ class TimeWindowAnalyzer:
                 price = price_point.get('value', 0)
                 
                 # Parse timestamp
-                timestamp = parse_datetime(timestamp_str, self.hass)
+                timestamp = parse_datetime(timestamp_str)
                 if not timestamp:
                     continue
                 
@@ -603,7 +603,7 @@ class TimeWindowAnalyzer:
         """Analyze current price situation and upcoming opportunities."""
         
         # FIXED: Use HA timezone for time analysis
-        now = get_current_ha_time(self.hass)
+        now = get_current_ha_time()
         
         # Find current windows
         current_windows = [w for w in windows if w.is_current]

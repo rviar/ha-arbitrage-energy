@@ -57,7 +57,7 @@ class EnergyBalancePredictor:
     def calculate_energy_balance_today(self) -> EnergyBalance:
         """Calculate energy balance for remainder of today."""
         # FIXED: Use HA timezone instead of system timezone
-        now = get_current_ha_time(getattr(self.sensor_helper, 'hass', None))
+        now = get_current_ha_time()
         
         # Get PV forecast for today
         pv_forecast_wh = self.sensor_helper.get_pv_forecast_today()

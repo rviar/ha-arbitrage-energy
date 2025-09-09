@@ -133,7 +133,7 @@ class EnergyArbitrageStatusSensor(EnergyArbitrageBaseSensor):
             "emergency_mode": self.coordinator.data.get("emergency_mode", False),
             "price_data_age": self.coordinator.data.get("price_data_age"),
             # FIXED: Use HA timezone for sensor last update
-            "last_update": get_current_ha_time(self.hass).isoformat(),
+            "last_update": get_current_ha_time().isoformat(),
         }
         
         manual_override = self.coordinator.data.get("manual_override_until")
@@ -623,7 +623,7 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
                 }
             
             # FIXED: Use HA timezone for strategic plan analysis
-            now = get_current_ha_time(self.hass)
+            now = get_current_ha_time()
             
             # Basic plan info
             attributes = {

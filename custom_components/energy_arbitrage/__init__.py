@@ -10,6 +10,7 @@ import homeassistant.helpers.config_validation as cv
 
 from .const import DOMAIN, WORK_MODE_EXPORT_FIRST, WORK_MODE_ZERO_EXPORT
 from .coordinator import EnergyArbitrageCoordinator
+from .arbitrage.utils import set_global_hass, clear_global_hass
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,6 +54,10 @@ SERVICE_HEALTH_CHECK_SCHEMA = vol.Schema({})
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
+    
+    # Initialize global HA reference for timezone utilities
+    set_global_hass(hass)
+    _LOGGER.debug("Global HA reference set for timezone utilities")
     
     coordinator = EnergyArbitrageCoordinator(hass, entry)
     
@@ -158,6 +163,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
+        clear_global_hass()
         hass.data[DOMAIN].pop(entry.entry_id)
         
         hass.services.async_remove(DOMAIN, SERVICE_RECALCULATE)
