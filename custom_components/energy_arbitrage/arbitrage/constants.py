@@ -80,6 +80,20 @@ PRICE_QUARTILE_DIVISOR = 4  # Divisor for quartile calculations
 PRICE_TOLERANCE_HIGH_MULTIPLIER = 1.1  # 110% for upper price tolerance
 PRICE_TOLERANCE_LOW_MULTIPLIER = 0.9  # 90% for lower price tolerance
 
+# Peak Detection Configuration
+PEAK_DETECTION_Z_SCORE_THRESHOLD = 1.5  # Z-score threshold for statistical outliers
+PEAK_DETECTION_EXTREME_MULTIPLIER = 1.20  # Multiplier for extreme peak detection (120% of 95th percentile)
+PEAK_DETECTION_STRATEGIC_OVERRIDE_MULTIPLIER = 1.10  # Strategic override threshold (110% of planned price)
+PEAK_DETECTION_HISTORICAL_LOOKBACK_HOURS = 24  # Hours of price history for baseline calculation
+PEAK_DETECTION_MIN_DURATION_MINUTES = 5  # Minimum peak duration to consider
+PEAK_DETECTION_FALSE_POSITIVE_COOLDOWN_MINUTES = 30  # Cooldown between override triggers
+PEAK_DETECTION_MAX_POWER_PERCENTAGE = 90  # Maximum battery power for peak discharge (%)
+
+# Peak Detection Priority Level
+DECISION_PRIORITY_EXCEPTIONAL_PEAK = 0  # Highest priority for exceptional peaks
+DECISION_PRIORITY_STRATEGIC_PLAN = 1  # Strategic plan priority (existing)
+DECISION_PRIORITY_TIME_CRITICAL = 2  # Time critical priority (existing)
+
 # Urgency Thresholds (hours)
 URGENCY_HIGH_THRESHOLD_HOURS = 1  # High urgency if starting within 1 hour
 URGENCY_MEDIUM_THRESHOLD_HOURS = 4  # Medium urgency if starting within 4 hours
