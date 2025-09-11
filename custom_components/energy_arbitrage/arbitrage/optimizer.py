@@ -137,43 +137,66 @@ class ArbitrageOptimizer:
         
         opportunities = []
         
-        # Check immediate arbitrage opportunity
-        if current_sell_price > current_buy_price:
-            roi = self.sensor_helper.get_arbitrage_roi(current_buy_price, current_sell_price)
-            
-            if roi >= min_margin:
-                # profit calculation done in profit_details below
-                
-                # Calculate detailed profit with degradation
-                battery_specs = self._get_battery_specs(
-                    self.sensor_helper.coordinator.data.get('config', {}),
-                    self.sensor_helper.coordinator.data.get('options', {})
-                )
-                include_degradation = self.sensor_helper.coordinator.data.get('options', {}).get('include_degradation', 
-                                    self.sensor_helper.coordinator.data.get('config', {}).get('include_degradation', True))
-                
-                # Assume 1kWh transaction for calculation
-                energy_amount_wh = ENERGY_CALCULATION_1KWH  # 1 kWh in Wh
-                profit_details = calculate_arbitrage_profit(
-                    current_buy_price, current_sell_price, energy_amount_wh,
-                    battery_efficiency, battery_specs, include_degradation
-                )
-                
-                opportunities.append({
-                    'buy_price': current_buy_price,
-                    'sell_price': current_sell_price,
-                    # FIXED: Use HA timezone for arbitrage timestamps
-                    'buy_time': get_current_ha_time().isoformat(),
-                    'sell_time': get_current_ha_time().isoformat(),
-                    'roi_percent': profit_details['roi_percent'],
-                    'net_profit_per_kwh': profit_details['net_profit'],
-                    'degradation_cost': profit_details['degradation_cost'],
-                    'cost_per_cycle': profit_details.get('cost_per_cycle', 0.0),
-                    'depth_of_discharge': profit_details.get('depth_of_discharge', 0.0),
-                    'equivalent_cycles': profit_details.get('equivalent_cycles', 0.0),
-                    'is_immediate_buy': True,
-                    'is_immediate_sell': True
-                })
+        # Check immediate arbitrage via near-term spread (sell-now→rebuy-later or buy-now→sell-later)
+        # This works even when current buy > current sell (common case)
+        ha_now = get_current_ha_time()
+        # Sell now, rebuy later at forecast minimum
+        roi_sell_rebuy = self.sensor_helper.get_arbitrage_roi(min_buy_price_24h, current_sell_price)
+        if roi_sell_rebuy >= min_margin:
+            battery_specs = self._get_battery_specs(
+                self.sensor_helper.coordinator.data.get('config', {}),
+                self.sensor_helper.coordinator.data.get('options', {})
+            )
+            include_degradation = self.sensor_helper.coordinator.data.get('options', {}).get('include_degradation', 
+                                self.sensor_helper.coordinator.data.get('config', {}).get('include_degradation', True))
+            energy_amount_wh = ENERGY_CALCULATION_1KWH
+            profit_details = calculate_arbitrage_profit(
+                min_buy_price_24h, current_sell_price, energy_amount_wh,
+                battery_efficiency, battery_specs, include_degradation
+            )
+            opportunities.append({
+                'buy_price': min_buy_price_24h,
+                'sell_price': current_sell_price,
+                'buy_time': (ha_now + timedelta(hours=FUTURE_BUY_TIME_OFFSET)).isoformat(),
+                'sell_time': ha_now.isoformat(),
+                'roi_percent': profit_details['roi_percent'],
+                'net_profit_per_kwh': profit_details['net_profit'],
+                'degradation_cost': profit_details['degradation_cost'],
+                'cost_per_cycle': profit_details.get('cost_per_cycle', 0.0),
+                'depth_of_discharge': profit_details.get('depth_of_discharge', 0.0),
+                'equivalent_cycles': profit_details.get('equivalent_cycles', 0.0),
+                'is_immediate_buy': False,
+                'is_immediate_sell': True
+            })
+        
+        # Buy now, sell later at forecast maximum
+        roi_buy_sell = self.sensor_helper.get_arbitrage_roi(current_buy_price, max_sell_price_24h)
+        if roi_buy_sell >= min_margin:
+            battery_specs = self._get_battery_specs(
+                self.sensor_helper.coordinator.data.get('config', {}),
+                self.sensor_helper.coordinator.data.get('options', {})
+            )
+            include_degradation = self.sensor_helper.coordinator.data.get('options', {}).get('include_degradation', 
+                                self.sensor_helper.coordinator.data.get('config', {}).get('include_degradation', True))
+            energy_amount_wh = ENERGY_CALCULATION_1KWH
+            profit_details = calculate_arbitrage_profit(
+                current_buy_price, max_sell_price_24h, energy_amount_wh,
+                battery_efficiency, battery_specs, include_degradation
+            )
+            opportunities.append({
+                'buy_price': current_buy_price,
+                'sell_price': max_sell_price_24h,
+                'buy_time': ha_now.isoformat(),
+                'sell_time': (ha_now + timedelta(hours=FUTURE_SELL_TIME_OFFSET)).isoformat(),
+                'roi_percent': profit_details['roi_percent'],
+                'net_profit_per_kwh': profit_details['net_profit'],
+                'degradation_cost': profit_details['degradation_cost'],
+                'cost_per_cycle': profit_details.get('cost_per_cycle', 0.0),
+                'depth_of_discharge': profit_details.get('depth_of_discharge', 0.0),
+                'equivalent_cycles': profit_details.get('equivalent_cycles', 0.0),
+                'is_immediate_buy': True,
+                'is_immediate_sell': False
+            })
         
         # Check future arbitrage opportunity (buy low, sell high)
         if max_sell_price_24h > min_buy_price_24h:
