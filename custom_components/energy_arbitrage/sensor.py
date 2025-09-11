@@ -351,7 +351,6 @@ class EnergyArbitragePVForecastTodaySensor(EnergyArbitrageBaseSensor):
         try:
             # Solcast forecast sensors contain daily totals in kWh, convert to Wh
             value = float(state.state) * 1000.0  # Convert kWh to Wh
-            _LOGGER.info(f"PVForecastTodaySensor: Using direct value from {pv_today_entity}: {value} Wh (was {state.state} kWh)")
             return round(value, 2)
         except (ValueError, TypeError) as e:
             _LOGGER.error(f"PVForecastTodaySensor: Cannot convert state '{state.state}' to float: {e}")
@@ -426,7 +425,6 @@ class EnergyArbitragePVForecastTomorrowSensor(EnergyArbitrageBaseSensor):
         try:
             # Solcast forecast sensors contain daily totals in kWh, convert to Wh
             value = float(state.state) * 1000.0  # Convert kWh to Wh
-            _LOGGER.info(f"PVForecastTomorrowSensor: Using direct value from {pv_tomorrow_entity}: {value} Wh (was {state.state} kWh)")
             return round(value, 2)
         except (ValueError, TypeError) as e:
             _LOGGER.error(f"PVForecastTomorrowSensor: Cannot convert state '{state.state}' to float: {e}")
