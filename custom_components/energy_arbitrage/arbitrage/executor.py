@@ -15,7 +15,8 @@ class ArbitrageExecutor:
     async def execute_decision(self, decision: Dict[str, Any]) -> bool:
         action = decision.get('action', 'hold')
         
-        if not self._can_execute_action():
+        # Allow 'hold' to always pass through to enforce safe idle state
+        if action != 'hold' and not self._can_execute_action():
             _LOGGER.debug("Action execution skipped due to cooldown")
             return False
         
@@ -26,7 +27,6 @@ class ArbitrageExecutor:
                 success = await self._execute_sell_arbitrage(decision)
             elif action == "charge_arbitrage":
                 success = await self._execute_charge_arbitrage(decision)
-            # Removed: charge_solar, export_solar, discharge_load - handled by inverter automatically
             elif action == "hold":
                 success = await self._execute_hold(decision)
             else:
@@ -34,7 +34,9 @@ class ArbitrageExecutor:
                 return False
             
             if success:
-                self._update_last_action_time()
+                # Do not set cooldown for 'hold' to avoid delaying next real action
+                if action != 'hold':
+                    self._update_last_action_time()
                 _LOGGER.info(f"Successfully executed action: {action}")
             else:
                 _LOGGER.error(f"Failed to execute action: {action}")
@@ -118,14 +120,35 @@ class ArbitrageExecutor:
             _LOGGER.error(f"Error executing charge arbitrage: {e}")
             return False
 
-    # Removed methods: _execute_charge_solar, _execute_export_solar, _execute_discharge_load
-    # These operations are handled automatically by the inverter
-
     async def _execute_hold(self, decision: Dict[str, Any]) -> bool:
         """Execute hold mode - set inverter to autonomous operation."""
         try:
             _LOGGER.info("Setting inverter to autonomous mode (hold)")
             
+            # Preflight: if already in desired idle state, skip reapplying settings
+            try:
+                tou_entity = self.coordinator.config.get('time_of_use_select')
+                wm_entity = self.coordinator.config.get('work_mode_select')
+                export_entity = self.coordinator.config.get('export_surplus_switch')
+                grid_entity = self.coordinator.config.get('battery_grid_charging_switch')
+
+                tou_state = self.coordinator.hass.states.get(tou_entity)
+                wm_state = self.coordinator.hass.states.get(wm_entity)
+                export_state = self.coordinator.hass.states.get(export_entity)
+                grid_state = self.coordinator.hass.states.get(grid_entity)
+
+                tou_ok = tou_state and tou_state.state == "Enabled"
+                work_mode_ok = wm_state and wm_state.state == "Zero Export To Load"
+                export_ok = export_state and export_state.state == "on"  # enable export surplus
+                grid_ok = grid_state and grid_state.state == "off"       # disable grid charging
+
+                if tou_ok and work_mode_ok and export_ok and grid_ok:
+                    _LOGGER.debug("Hold preflight: inverter already in idle state; skipping changes")
+                    return True
+            except Exception:
+                # Preflight is best-effort; continue to enforce hold config
+                pass
+
             # Set all hold mode parameters
             tasks = []
             

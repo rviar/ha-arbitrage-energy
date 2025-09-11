@@ -199,8 +199,8 @@ class EnergyArbitrageCoordinator(DataUpdateCoordinator):
                 decision = {"action": "manual_override", "reason": "Manual override active"}
             else:
                 decision = await self.optimizer.calculate_optimal_action(data)
-                if decision["action"] != "hold":
-                    await self.executor.execute_decision(decision)
+                # Always execute decision, including 'hold', to ensure inverter state is reverted to idle
+                await self.executor.execute_decision(decision)
                 
             return {
                 **data,
