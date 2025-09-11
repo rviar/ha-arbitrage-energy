@@ -150,8 +150,8 @@ class TimeWindowAnalyzer:
                     _LOGGER.warning(f"Failed to parse {action_type} timestamp: {timestamp_str}")
                     continue
                 
-                # Skip past prices
-                if timestamp < now:
+                # Skip past prices EXCEPT keep the current hour (include windows that already started)
+                if (timestamp + timedelta(hours=1)) <= now:
                     continue
                 
                 # Skip prices too far in future
