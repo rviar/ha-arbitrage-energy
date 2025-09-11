@@ -27,7 +27,6 @@ class DecisionContext:
     min_arbitrage_margin: float
     energy_strategy: Dict[str, Any]
     price_situation: Dict[str, Any]
-    strategic_recommendation: Dict[str, Any]
 
 @dataclass 
 class DecisionResult:
