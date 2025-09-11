@@ -290,6 +290,11 @@ class ArbitrageOptimizer:
                     # Record cooldown timestamps
                     if decision.action in ['sell_arbitrage', 'charge_arbitrage']:
                         self._last_trade_ts['sell' if decision.action == 'sell_arbitrage' else 'buy'] = get_current_ha_time().isoformat()
+                    # Centralized debug rationale logging
+                    try:
+                        self._log_decision_rationale(decision, context, handler.__class__.__name__)
+                    except Exception as e:
+                        _LOGGER.debug(f"Failed to log decision rationale: {e}")
                     return self._convert_decision_to_dict(decision)
         
         # Fallback - should never reach here due to HoldDecisionHandler
@@ -301,6 +306,56 @@ class ArbitrageOptimizer:
             "profit_forecast": 0,
             "strategy": "fallback"
         }
+
+    def _log_decision_rationale(self, decision: DecisionResult, context: DecisionContext, handler_name: str) -> None:
+        """Emit a detailed DEBUG log explaining why a decision was made.
+
+        Includes the selected handler, strategy inputs, price situation, policy reasons,
+        schedule hints, and key state that influenced the outcome.
+        """
+        analysis = context.data.get('analysis', {}) if context and context.data else {}
+        energy_strategy = analysis.get('energy_strategy', {})
+        price_situation = analysis.get('price_situation', {})
+        best_sell_schedule = analysis.get('best_sell_schedule', [])
+        best_buy_schedule = analysis.get('best_buy_schedule', [])
+        last_policy_reason = analysis.get('last_policy_reason')
+
+        cs = context.current_state or {}
+        opp = decision.opportunity or {}
+
+        # Summarize schedules
+        has_sell_now = any(getattr(getattr(op, 'window', None), 'is_current', False) for op in best_sell_schedule)
+        has_buy_now = any(getattr(getattr(op, 'window', None), 'is_current', False) for op in best_buy_schedule)
+
+        _LOGGER.debug(
+            "DECISION RATIONALE | handler=%s | action=%s | reason=%s | strategy=%s | plan=%s | completion=%s\n"
+            "  battery_level=%.1f%% min_reserve=%.1f%% pv=%dW load=%dW grid=%dW avail_batt_Wh=%d cap_Wh=%d\n"
+            "  immediate=%s next=%s time_pressure=%s has_sell_now=%s has_buy_now=%s last_policy_reason=%s\n"
+            "  opportunity={roi=%.2f%%, net_profit_per_kwh=%.4f, immediate_buy=%s, immediate_sell=%s}",
+            handler_name,
+            decision.action,
+            decision.reason,
+            decision.strategy,
+            getattr(decision, 'plan_status', None),
+            getattr(decision, 'completion_time', None),
+            cs.get('battery_level', 0.0),
+            cs.get('min_reserve_percent', 0.0),
+            int(cs.get('pv_power', 0.0)),
+            int(cs.get('load_power', 0.0)),
+            int(cs.get('grid_power', 0.0)),
+            int(cs.get('available_battery_capacity', 0.0) or cs.get('available_battery_wh', 0.0) or 0),
+            int(cs.get('battery_capacity', 0.0)),
+            bool(price_situation.get('immediate_action')),
+            bool(price_situation.get('next_opportunity')),
+            price_situation.get('time_pressure'),
+            has_sell_now,
+            has_buy_now,
+            last_policy_reason,
+            float(opp.get('roi_percent', 0.0)),
+            float(opp.get('net_profit_per_kwh', 0.0)),
+            bool(opp.get('is_immediate_buy', False)),
+            bool(opp.get('is_immediate_sell', False))
+        )
 
     def _gather_analysis_data(self, current_state: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any]:
         """Gather all analysis data needed for decision making."""
