@@ -517,9 +517,33 @@ class TimeWindowAnalyzer:
     
     def get_current_price_situation(self, windows: List[PriceWindow]) -> Dict[str, Any]:
         """Analyze current price situation and upcoming opportunities."""
+        # Debug: log current HA time for alignment checks
+        now = get_current_ha_time()
+        _LOGGER.debug(f"PriceSituation now: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+
         # Find current windows
         current_windows = [w for w in windows if w.is_current]
         upcoming_windows = [w for w in windows if w.is_upcoming]
+
+        # Debug: log first two current and upcoming windows
+        if current_windows:
+            try:
+                cur_preview = ", ".join(
+                    f"{w.action} {w.start_time.strftime('%H:%M')}-{w.end_time.strftime('%H:%M')} @ {w.price:.4f}"
+                    for w in current_windows[:2]
+                )
+                _LOGGER.debug(f"Current windows ({len(current_windows)}): {cur_preview}")
+            except Exception:
+                pass
+        if upcoming_windows:
+            try:
+                up_preview = ", ".join(
+                    f"{w.action} {w.start_time.strftime('%H:%M')}-{w.end_time.strftime('%H:%M')} @ {w.price:.4f}"
+                    for w in upcoming_windows[:2]
+                )
+                _LOGGER.debug(f"Upcoming windows ({len(upcoming_windows)}): {up_preview}")
+            except Exception:
+                pass
         
         # Sort upcoming by start time
         upcoming_windows.sort(key=lambda w: w.start_time)
