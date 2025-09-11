@@ -130,6 +130,16 @@ class TimeCriticalDecisionHandler(DecisionHandler):
             )
             _LOGGER.debug(f"TimeCritical SELL approved: reason={sell_policy.get('reason')}")
             return decision
+
+        # If we get here, store policy reason for HOLD to explain why action was skipped
+        try:
+            analysis = context.data.get('analysis', {})
+            if immediate['action'] == 'buy' and not buy_policy.get('allowed'):
+                analysis['last_policy_reason'] = buy_policy.get('reason', 'policy_blocked')
+            elif immediate['action'] == 'sell' and not sell_policy.get('allowed'):
+                analysis['last_policy_reason'] = sell_policy.get('reason', 'policy_blocked')
+        except Exception:
+            pass
         
         return None
 
@@ -220,6 +230,11 @@ class PredictiveDecisionHandler(DecisionHandler):
         })
         if not (available_battery > MIN_ENERGY_FOR_SELL and sell_policy.get('allowed')):
             _LOGGER.debug(f"Predictive sell skipped: reason={sell_policy.get('reason', 'unknown')}")
+            # Store policy reason for HOLD context
+            try:
+                context.data.get('analysis', {})['last_policy_reason'] = sell_policy.get('reason', 'policy_blocked')
+            except Exception:
+                pass
             return None
         
         # Calculate discharge parameters based on strategy
@@ -251,8 +266,11 @@ class HoldDecisionHandler(DecisionHandler):
     def make_decision(self, context: DecisionContext) -> Optional[DecisionResult]:
         battery_level = context.current_state['battery_level']
         
-        # Smart hold with strategy context
-        if context.energy_strategy.get('recommendation') == 'hold':
+        # Prefer detailed policy reason if available
+        policy_reason = context.data.get('analysis', {}).get('last_policy_reason')
+        if policy_reason:
+            reason = f"🔄 HOLD: {policy_reason}"
+        elif context.energy_strategy.get('recommendation') == 'hold':
             reason = f"🔄 STRATEGIC HOLD: {context.energy_strategy.get('reason', 'Waiting for better conditions')}"
         else:
             reason = "🔄 HOLD: No profitable opportunities available"
