@@ -27,7 +27,6 @@ class PriceWindow:
     duration_hours: float         # Window duration in hours
     confidence: float             # Forecast confidence 0-1
     urgency: str                  # "low" | "medium" | "high"
-    hass: Any = None              # HA object for timezone
     peak_times: List[Tuple[datetime, float]] = None  # (timestamp, price) for peaks within window
     
     @property
@@ -83,9 +82,6 @@ class TimeWindowAnalyzer:
     
     def __init__(self, sensor_helper):
         self.sensor_helper = sensor_helper
-        self._price_history = []  # Cache for price data analysis
-        # Get HA timezone from sensor helper
-        self.hass = sensor_helper.hass
         
     @safe_execute(default_return=[])
     @log_performance
@@ -300,7 +296,6 @@ class TimeWindowAnalyzer:
             duration_hours=duration,
             confidence=confidence,  # Dynamic confidence based on data quality
             urgency=urgency,
-            hass=self.hass,
             peak_times=None  # Will be populated below
         )
         
@@ -347,7 +342,6 @@ class TimeWindowAnalyzer:
             duration_hours=duration,
             confidence=confidence,  # Dynamic confidence based on data quality
             urgency=urgency,
-            hass=self.hass,
             peak_times=None  # Will be populated below
         )
         

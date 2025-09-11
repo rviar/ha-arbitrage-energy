@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta
-from .utils import get_current_ha_time, get_ha_timezone, parse_datetime
+from .utils import get_current_ha_time
 from typing import Dict, Any, List, Optional
 from ..const import CONF_CURRENCY, DEFAULT_CURRENCY
 
@@ -18,7 +18,7 @@ from .constants import (
     ENERGY_CALCULATION_1KWH, PRICE_COMPARISON_TOLERANCE,
     FUTURE_BUY_TIME_OFFSET, FUTURE_SELL_TIME_OFFSET,
     DEFAULT_BATTERY_COST, DEFAULT_BATTERY_CYCLES, DEFAULT_DEGRADATION_FACTOR,
-    TIME_WINDOW_TOLERANCE_MINUTES, FALLBACK_BATTERY_LEVEL_PERCENT,
+    FALLBACK_BATTERY_LEVEL_PERCENT,
     FALLBACK_CONFIDENCE_LEVEL, NEAR_TERM_REBUY_LOOKAHEAD_HOURS
 )
 from .utils import (
@@ -457,24 +457,7 @@ class ArbitrageOptimizer:
             
         return result
 
-    def _is_current_time_window(self, time_string: str, tolerance_minutes: int = TIME_WINDOW_TOLERANCE_MINUTES) -> bool:
-        try:
-            # Use already imported functions
-            
-            # Parse window time to HA timezone
-            window_time = parse_datetime(time_string)
-            if not window_time:
-                return False
-                
-            # Get current time in HA timezone
-            ha_tz = get_ha_timezone()
-            current_time = datetime.now(ha_tz)
-            
-            time_diff = abs((window_time - current_time).total_seconds() / 60)
-            return time_diff <= tolerance_minutes
-            
-        except Exception:
-            return False
+    # Removed unused helper _is_current_time_window to reduce dead code
 
     def _get_battery_specs(self, config: Dict[str, Any], options: Dict[str, Any]) -> Dict[str, float]:
         # Get coordinator data for static config parameters  

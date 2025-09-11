@@ -9,13 +9,11 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from .constants import (
     MAX_BATTERY_LEVEL,
-    BATTERY_POWER_CONSERVATIVE_MULTIPLIER, STRATEGIC_CHARGE_LEVEL_ADJUSTMENT,
-    STRATEGIC_DISCHARGE_LEVEL_ADJUSTMENT, MIN_ENERGY_FOR_SELL,
-    BATTERY_CHARGE_AGGRESSIVE_MARGIN
+    STRATEGIC_CHARGE_LEVEL_ADJUSTMENT,
+    STRATEGIC_DISCHARGE_LEVEL_ADJUSTMENT, MIN_ENERGY_FOR_SELL
 )
 from .policy import can_sell_now, can_buy_now
-from .utils import get_current_ha_time
-from .constants import TIME_WINDOW_TOLERANCE_MINUTES
+ 
 
 _LOGGER = logging.getLogger(__name__)
 
