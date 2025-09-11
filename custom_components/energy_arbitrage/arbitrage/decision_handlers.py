@@ -14,6 +14,8 @@ from .constants import (
     BATTERY_CHARGE_AGGRESSIVE_MARGIN
 )
 from .policy import can_sell_now, can_buy_now
+from .utils import get_current_ha_time
+from .constants import TIME_WINDOW_TOLERANCE_MINUTES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -96,40 +98,73 @@ class TimeCriticalDecisionHandler(DecisionHandler):
         if (immediate['action'] == 'buy' and 
             self.sensor_helper.is_battery_charging_viable() and 
             buy_policy.get('allowed')):
+            # Enforce BEST-OF-BEST buy schedule
+            try:
+                analysis = context.data.get('analysis', {})
+                schedule = analysis.get('best_buy_schedule', []) or []
+                current_op = next((op for op in schedule if getattr(getattr(op, 'window', None), 'is_current', False)), None)
+                if schedule and not current_op:
+                    analysis['last_policy_reason'] = 'waiting_best_buy_window'
+                    return None
+                if current_op:
+                    charge_power = min(context.max_battery_power, max(surplus_power, current_op.target_power_w))
+                    decision = DecisionResult(
+                        action="charge_arbitrage",
+                        reason=f"{urgency_prefix}: BEST buy window active (Price≈{immediate['price']:.3f})",
+                        target_power=charge_power,
+                        target_battery_level=min(MAX_BATTERY_LEVEL, battery_level + STRATEGIC_CHARGE_LEVEL_ADJUSTMENT),
+                        profit_forecast=best_opportunity.get('net_profit_per_kwh', 0) * (charge_power / 1000),
+                        opportunity=best_opportunity,
+                        strategy="time_critical",
+                        completion_time=getattr(current_op, 'completion_time', None).isoformat() if getattr(current_op, 'completion_time', None) else None,
+                        plan_status="scheduled"
+                    )
+                    _LOGGER.debug(f"TimeCritical BUY approved (scheduled)")
+                    return decision
+            except Exception:
+                pass
             
-            charge_power = min(context.max_battery_power, 
-                             surplus_power if surplus_power > 0 else context.max_battery_power)
-            
-            decision = DecisionResult(
-                action="charge_arbitrage",
-                reason=f"{urgency_prefix}: Buy window ending in {immediate['time_remaining']:.1f}h (Price: {immediate['price']:.3f})",
-                target_power=charge_power,
-                target_battery_level=min(MAX_BATTERY_LEVEL, battery_level + STRATEGIC_CHARGE_LEVEL_ADJUSTMENT),
-                profit_forecast=best_opportunity.get('net_profit_per_kwh', 0) * (charge_power / 1000),
-                opportunity=best_opportunity,
-                strategy="time_critical"
-            )
-            _LOGGER.debug(f"TimeCritical BUY approved: reason={buy_policy.get('reason')}")
-            return decision
+            # No schedule => hold
+            try:
+                context.data.get('analysis', {})['last_policy_reason'] = 'no_best_buy_schedule'
+            except Exception:
+                pass
+            return None
             
         elif (immediate['action'] == 'sell' and 
               available_battery > MIN_ENERGY_FOR_SELL and
               sell_policy.get('allowed')):
-            
-            discharge_power = min(context.max_battery_power, 
-                                available_battery / immediate['time_remaining'])
-            
-            decision = DecisionResult(
-                action="sell_arbitrage",
-                reason=f"{urgency_prefix}: Sell window ending in {immediate['time_remaining']:.1f}h (Price: {immediate['price']:.3f})",
-                target_power=-discharge_power,
-                target_battery_level=max(min_reserve, battery_level - STRATEGIC_DISCHARGE_LEVEL_ADJUSTMENT),
-                profit_forecast=((best_opportunity.get('net_profit_per_kwh', 0) if best_opportunity else 0) * (discharge_power / 1000)),
-                opportunity=best_opportunity,
-                strategy="time_critical"
-            )
-            _LOGGER.debug(f"TimeCritical SELL approved: reason={sell_policy.get('reason')}")
-            return decision
+            # Enforce BEST-OF-BEST schedule if available
+            try:
+                analysis = context.data.get('analysis', {})
+                schedule = analysis.get('best_sell_schedule', []) or []
+                current_op = next((op for op in schedule if getattr(getattr(op, 'window', None), 'is_current', False)), None)
+                if schedule and not current_op:
+                    analysis['last_policy_reason'] = 'waiting_best_sell_window'
+                    return None
+                if current_op:
+                    discharge_power = min(context.max_battery_power, current_op.target_power_w)
+                    decision = DecisionResult(
+                        action="sell_arbitrage",
+                        reason=f"{urgency_prefix}: BEST sell window active (Price≈{immediate['price']:.3f})",
+                        target_power=-discharge_power,
+                        target_battery_level=max(min_reserve, battery_level - STRATEGIC_DISCHARGE_LEVEL_ADJUSTMENT),
+                        profit_forecast=((best_opportunity.get('net_profit_per_kwh', 0) if best_opportunity else 0) * (discharge_power / 1000)),
+                        opportunity=best_opportunity,
+                        strategy="time_critical",
+                        completion_time=getattr(current_op, 'completion_time', None).isoformat() if getattr(current_op, 'completion_time', None) else None,
+                        plan_status="scheduled"
+                    )
+                    _LOGGER.debug(f"TimeCritical SELL approved (scheduled)")
+                    return decision
+            except Exception:
+                pass
+            # No schedule => hold
+            try:
+                context.data.get('analysis', {})['last_policy_reason'] = 'no_best_sell_schedule'
+            except Exception:
+                pass
+            return None
 
         # If we get here, store policy reason for HOLD to explain why action was skipped
         try:
@@ -172,55 +207,8 @@ class PredictiveDecisionHandler(DecisionHandler):
         return None
     
     def _handle_charge_strategy(self, context, strategy, battery_level, battery_capacity, surplus_power, best_opportunity):
-        if not (best_opportunity and best_opportunity.get('is_immediate_buy')):
-            return None
-            
-        # For aggressive charging, use lower margin threshold
-        margin_multiplier = BATTERY_CHARGE_AGGRESSIVE_MARGIN if strategy['recommendation'] == 'charge_aggressive' else 1.0
-        if best_opportunity['roi_percent'] < context.min_arbitrage_margin * margin_multiplier:
-            return None
-        
-        target_energy = (strategy['target_battery_level'] - battery_level) / 100 * battery_capacity
-        
-        # Try to plan the operation  
-        try:
-            # Get price windows from the analysis data that was passed through context
-            # We need to access it through the data since it's computed in gather_analysis_data
-            price_windows = context.data.get('analysis', {}).get('price_windows', [])
-            planned_operation = self.time_analyzer.plan_battery_operation(
-                target_energy, 'charge', price_windows, context.max_battery_power,
-                context.data.get("price_data", {}).get("buy_prices", [])
-            )
-            
-            if planned_operation and planned_operation.feasible:
-                priority_label = "⚡ PLANNED" if strategy['recommendation'] == 'charge_aggressive' else "📊 PLANNED"
-                return DecisionResult(
-                    action="charge_arbitrage",
-                    reason=f"{priority_label}: {strategy['reason']} (Time: {planned_operation.duration_hours:.1f}h, ROI: {best_opportunity['roi_percent']:.1f}%)",
-                    target_power=planned_operation.target_power_w,
-                    target_battery_level=strategy['target_battery_level'],
-                    profit_forecast=best_opportunity['net_profit_per_kwh'] * (planned_operation.target_power_w / 1000),
-                    opportunity=best_opportunity,
-                    strategy=f"{strategy['recommendation']}_planned",
-                    completion_time=planned_operation.completion_time.isoformat()
-                )
-        except Exception as e:
-            _LOGGER.warning(f"Failed to plan battery operation: {e}")
-        
-        # Fallback to immediate charging
-        charge_power = min(context.max_battery_power, surplus_power if surplus_power > 0 else context.max_battery_power)
-        priority_label = "⚡ IMMEDIATE" if strategy['recommendation'] == 'charge_aggressive' else "📊 STANDARD"
-        target_adjustment = 15 if strategy['recommendation'] == 'charge_aggressive' else 10
-        
-        return DecisionResult(
-            action="charge_arbitrage", 
-            reason=f"{priority_label}: {strategy['reason']} (ROI: {best_opportunity['roi_percent']:.1f}%)",
-            target_power=charge_power,
-            target_battery_level=min(95, battery_level + target_adjustment),
-            profit_forecast=best_opportunity['net_profit_per_kwh'] * (charge_power / 1000),
-            opportunity=best_opportunity,
-            strategy=strategy['recommendation']
-        )
+        # Only buy during scheduled best windows
+        return None
     
     def _handle_sell_strategy(self, context, strategy, battery_level, min_reserve, available_battery, best_opportunity):
         sell_policy = can_sell_now({
@@ -237,25 +225,33 @@ class PredictiveDecisionHandler(DecisionHandler):
                 pass
             return None
         
-        # Calculate discharge parameters based on strategy
-        if strategy['recommendation'] == 'sell_aggressive':
-            discharge_power = min(context.max_battery_power, available_battery / 2)  # Aggressive discharge
-            target_adjustment = 20
-        else:  # sell_partial
-            discharge_power = min(context.max_battery_power * 0.6, available_battery / 3)  # Conservative discharge
-            target_adjustment = 10
+        # Prefer BEST-OF-BEST schedule
+        try:
+            analysis = context.data.get('analysis', {})
+            schedule = analysis.get('best_sell_schedule', []) or []
+            current_op = next((op for op in schedule if getattr(getattr(op, 'window', None), 'is_current', False)), None)
+            if schedule and not current_op:
+                analysis['last_policy_reason'] = 'waiting_best_sell_window'
+                return None
+            if current_op:
+                discharge_power = min(context.max_battery_power, current_op.target_power_w)
+                priority_label = "🔥 AGGRESSIVE" if strategy['recommendation'] == 'sell_aggressive' else "📈 SELECTIVE"
+                return DecisionResult(
+                    action="sell_arbitrage",
+                    reason=f"{priority_label}: BEST window active (scheduled)",
+                    target_power=-discharge_power,
+                    target_battery_level=max(min_reserve, battery_level - (20 if strategy['recommendation'] == 'sell_aggressive' else 10)),
+                    profit_forecast=((best_opportunity.get('net_profit_per_kwh', 0) if best_opportunity else 0) * (discharge_power / 1000)),
+                    opportunity=best_opportunity,
+                    strategy=f"{strategy['recommendation']}_scheduled",
+                    completion_time=getattr(current_op, 'completion_time', None).isoformat() if getattr(current_op, 'completion_time', None) else None,
+                    plan_status="scheduled"
+                )
+        except Exception:
+            pass
         
-        priority_label = "🔥 AGGRESSIVE" if strategy['recommendation'] == 'sell_aggressive' else "📈 SELECTIVE"
-        
-        return DecisionResult(
-            action="sell_arbitrage",
-            reason=f"{priority_label}: {strategy['reason']} (ROI: {(best_opportunity['roi_percent'] if best_opportunity else context.data.get('analysis', {}).get('near_term_rebuy', {}).get('roi_percent', 0)):.1f}%)",
-            target_power=-discharge_power,
-            target_battery_level=max(min_reserve, battery_level - target_adjustment),
-            profit_forecast=((best_opportunity.get('net_profit_per_kwh', 0) if best_opportunity else 0) * (discharge_power / 1000)),
-            opportunity=best_opportunity,
-            strategy=strategy['recommendation']
-        )
+        # Only sell during scheduled best windows
+        return None
 
 class HoldDecisionHandler(DecisionHandler):
     """Handles hold/wait decisions when no profitable opportunities exist."""

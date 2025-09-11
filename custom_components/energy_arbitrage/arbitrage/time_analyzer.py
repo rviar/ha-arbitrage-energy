@@ -709,3 +709,148 @@ class TimeWindowAnalyzer:
                     current_energy_wh -= actual_energy
         
         return optimized_ops
+
+    def plan_best_sell_schedule(
+        self,
+        windows: List[PriceWindow],
+        available_battery_wh: float,
+        battery_capacity_wh: float,
+        current_battery_level_percent: float,
+        min_reserve_percent: float,
+        max_power_w: float,
+        price_data: List[Dict] = None,
+        max_windows: int = 4
+    ) -> List[BatteryOperation]:
+        """Allocate discharge across top-priced sell windows.
+        
+        - Ranks sell windows by price (desc), then start time
+        - Allocates energy respecting max power and window durations
+        - Honors reserve by later optimization step
+        - Optionally shifts start to peak times within each window
+        """
+        try:
+            sell_windows = [w for w in windows if getattr(w, 'action', None) == 'sell']
+            if not sell_windows or available_battery_wh <= 0 or max_power_w <= 0:
+                return []
+            
+            # Sort: best price first, break ties by earlier start
+            sell_windows.sort(key=lambda w: (-w.price, w.start_time))
+            if max_windows and max_windows > 0:
+                sell_windows = sell_windows[:max_windows]
+            
+            remaining_wh = max(0.0, available_battery_wh)
+            planned_ops: List[BatteryOperation] = []
+            
+            for window in sell_windows:
+                if remaining_wh <= 0:
+                    break
+                window_capacity_wh = max_power_w * max(0.0, window.duration_hours)
+                if window_capacity_wh <= 0:
+                    continue
+                allocate_wh = min(remaining_wh, window_capacity_wh)
+                if allocate_wh < 100:  # ignore tiny fragments
+                    continue
+                # Compute nominal power and duration in this window
+                target_power_w = min(max_power_w, allocate_wh / max(0.001, window.duration_hours))
+                duration_hours = allocate_wh / max(1.0, target_power_w)
+                
+                # Try to shift to best time inside the window
+                optimal_start, _ = self.get_optimal_operation_time(
+                    window, price_data or [], operation_duration_hours=duration_hours
+                )
+                completion_time = optimal_start + timedelta(hours=duration_hours)
+                
+                planned_ops.append(BatteryOperation(
+                    action='discharge',
+                    target_energy_wh=allocate_wh,
+                    target_power_w=target_power_w,
+                    duration_hours=duration_hours,
+                    window=window,
+                    feasible=True,
+                    completion_time=completion_time
+                ))
+                remaining_wh -= allocate_wh
+            
+            if not planned_ops:
+                return []
+            
+            # Enforce reserve and feasibility over time
+            optimized = self.optimize_operation_sequence(
+                planned_ops,
+                battery_capacity_wh=battery_capacity_wh,
+                current_battery_level=current_battery_level_percent
+            )
+            return optimized
+        except Exception as e:
+            _LOGGER.warning(f"Failed to build best sell schedule: {e}")
+            return []
+
+    def plan_best_buy_schedule(
+        self,
+        windows: List[PriceWindow],
+        headroom_wh: float,
+        battery_capacity_wh: float,
+        current_battery_level_percent: float,
+        max_power_w: float,
+        price_data: List[Dict] = None,
+        max_windows: int = 4
+    ) -> List[BatteryOperation]:
+        """Allocate charging across lowest-priced buy windows.
+        
+        - Ranks buy windows by price (asc), then start time
+        - Allocates energy up to battery headroom and window power/time limits
+        - Shifts to intrawindow lowest price times where possible
+        """
+        try:
+            buy_windows = [w for w in windows if getattr(w, 'action', None) == 'buy']
+            if not buy_windows or headroom_wh <= 0 or max_power_w <= 0:
+                return []
+            
+            # Sort: lowest price first, then earlier start
+            buy_windows.sort(key=lambda w: (w.price, w.start_time))
+            if max_windows and max_windows > 0:
+                buy_windows = buy_windows[:max_windows]
+            
+            remaining_wh = max(0.0, headroom_wh)
+            planned_ops: List[BatteryOperation] = []
+            
+            for window in buy_windows:
+                if remaining_wh <= 0:
+                    break
+                window_capacity_wh = max_power_w * max(0.0, window.duration_hours)
+                if window_capacity_wh <= 0:
+                    continue
+                allocate_wh = min(remaining_wh, window_capacity_wh)
+                if allocate_wh < 100:
+                    continue
+                target_power_w = min(max_power_w, allocate_wh / max(0.001, window.duration_hours))
+                duration_hours = allocate_wh / max(1.0, target_power_w)
+                
+                optimal_start, _ = self.get_optimal_operation_time(
+                    window, price_data or [], operation_duration_hours=duration_hours
+                )
+                completion_time = optimal_start + timedelta(hours=duration_hours)
+                
+                planned_ops.append(BatteryOperation(
+                    action='charge',
+                    target_energy_wh=allocate_wh,
+                    target_power_w=target_power_w,
+                    duration_hours=duration_hours,
+                    window=window,
+                    feasible=True,
+                    completion_time=completion_time
+                ))
+                remaining_wh -= allocate_wh
+            
+            if not planned_ops:
+                return []
+            
+            optimized = self.optimize_operation_sequence(
+                planned_ops,
+                battery_capacity_wh=battery_capacity_wh,
+                current_battery_level=current_battery_level_percent
+            )
+            return optimized
+        except Exception as e:
+            _LOGGER.warning(f"Failed to build best buy schedule: {e}")
+            return []

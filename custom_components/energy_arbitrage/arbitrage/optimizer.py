@@ -351,10 +351,44 @@ class ArbitrageOptimizer:
             _LOGGER.info(f"⏰ Price windows found: {len(price_windows)} opportunities")
             _LOGGER.info(f"⚡ Current situation: {price_situation.get('time_pressure', 'low')} time pressure")
             
+            # 🏆 BEST-OF-BEST SELL SCHEDULE
+            try:
+                best_sell_schedule = self.time_analyzer.plan_best_sell_schedule(
+                    windows=price_windows,
+                    available_battery_wh=current_state.get('available_battery_capacity', 0.0),
+                    battery_capacity_wh=current_state.get('battery_capacity', 0.0),
+                    current_battery_level_percent=current_state.get('battery_level', 0.0),
+                    min_reserve_percent=current_state.get('min_reserve_percent', 20.0),
+                    max_power_w=self.sensor_helper.get_max_battery_power(),
+                    price_data=data.get("price_data", {}).get("sell_prices", []),
+                    max_windows=4
+                )
+            except Exception as e:
+                _LOGGER.warning(f"Failed to compute best sell schedule: {e}")
+                best_sell_schedule = []
+
+            # 🥇 BEST-OF-BEST BUY SCHEDULE
+            try:
+                headroom_wh = max(0.0, current_state.get('battery_capacity', 0.0) - (current_state.get('battery_level', 0.0) / 100.0) * current_state.get('battery_capacity', 0.0))
+                best_buy_schedule = self.time_analyzer.plan_best_buy_schedule(
+                    windows=price_windows,
+                    headroom_wh=headroom_wh,
+                    battery_capacity_wh=current_state.get('battery_capacity', 0.0),
+                    current_battery_level_percent=current_state.get('battery_level', 0.0),
+                    max_power_w=self.sensor_helper.get_max_battery_power(),
+                    price_data=data.get("price_data", {}).get("buy_prices", []),
+                    max_windows=4
+                )
+            except Exception as e:
+                _LOGGER.warning(f"Failed to compute best buy schedule: {e}")
+                best_buy_schedule = []
+            
         except Exception as e:
             _LOGGER.warning(f"Time window analysis failed: {e}")
             price_windows = []
             price_situation = {'time_pressure': 'low', 'current_opportunities': 0}
+            best_sell_schedule = []
+            best_buy_schedule = []
         
         # 📉 NEAR-TERM REBUY ANALYSIS (sell-now, rebuy-soon)
         near_term_rebuy = {
@@ -394,7 +428,9 @@ class ArbitrageOptimizer:
             'near_term_rebuy': near_term_rebuy,
             'pv_can_reach_target': pv_can_reach_target,
             'pv_storeable_surplus_wh': pv_storeable_surplus_wh,
-            'required_wh_to_target': required_wh_to_target
+            'required_wh_to_target': required_wh_to_target,
+            'best_sell_schedule': best_sell_schedule,
+            'best_buy_schedule': best_buy_schedule
         }
         # Store for sensors/diagnostics
         self._last_analysis = result
