@@ -134,6 +134,10 @@ class TimeWindowAnalyzer:
         # Find consecutive price periods that meet criteria
         windows = []
         current_window = None
+        # Precompute HA now and horizon once
+        ha_tz = get_ha_timezone()
+        now = datetime.now(ha_tz)
+        horizon = now + timedelta(hours=hours_ahead)
         
         for price_point in prices:
             try:
@@ -147,13 +151,11 @@ class TimeWindowAnalyzer:
                     continue
                 
                 # Skip past prices
-                ha_tz = get_ha_timezone()
-                now = datetime.now(ha_tz)
                 if timestamp < now:
                     continue
                 
                 # Skip prices too far in future
-                if timestamp > now + timedelta(hours=hours_ahead):
+                if timestamp > horizon:
                     continue
                 
                 # Check if price meets criteria
@@ -168,38 +170,32 @@ class TimeWindowAnalyzer:
                         current_window = {
                             'start': timestamp,
                             'end': timestamp + timedelta(hours=1),
-                            'price': price,
-                            'count': 1
+                            'price': price
                         }
                     else:
                         # Extend current window if consecutive
                         if timestamp <= current_window['end']:
-                            if not is_buy:
-                                old_price = current_window['price']
                             current_window['end'] = timestamp + timedelta(hours=1)
                             # For buy: take minimum price, for sell: take maximum price
                             current_window['price'] = (
                                 min(current_window['price'], price) if is_buy else 
                                 max(current_window['price'], price)
                             )
-                            current_window['count'] += 1
                         else:
                             # Gap found, save current window and start new one
-                            if current_window['count'] >= 1:
-                                window = (
-                                    self._create_buy_window(current_window, price_data) if is_buy else
-                                    self._create_sell_window(current_window, price_data)
-                                )
-                                windows.append(window)
+                            window = (
+                                self._create_buy_window(current_window, price_data) if is_buy else
+                                self._create_sell_window(current_window, price_data)
+                            )
+                            windows.append(window)
                             
                             current_window = {
                                 'start': timestamp,
                                 'end': timestamp + timedelta(hours=1),
-                                'price': price,
-                                'count': 1
+                                'price': price
                             }
                 else:
-                    if current_window and current_window['count'] >= 1:
+                    if current_window:
                         window = (
                             self._create_buy_window(current_window, price_data) if is_buy else
                             self._create_sell_window(current_window, price_data)
@@ -212,7 +208,7 @@ class TimeWindowAnalyzer:
                 continue
         
         # Don't forget last window
-        if current_window and current_window['count'] >= 1:
+        if current_window:
             window = (
                 self._create_buy_window(current_window, price_data) if is_buy else
                 self._create_sell_window(current_window, price_data)
