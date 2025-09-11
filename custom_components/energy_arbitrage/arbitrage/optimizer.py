@@ -12,7 +12,7 @@ from .strategic_planner import StrategicPlanner
 from .decision_handlers import (
     DecisionContext, DecisionResult,
     StrategicDecisionHandler, TimeCriticalDecisionHandler, 
-    PredictiveDecisionHandler, TraditionalArbitrageHandler, HoldDecisionHandler
+    PredictiveDecisionHandler, HoldDecisionHandler
 )
 from .constants import (
     STRATEGIC_PLAN_UPDATE_INTERVAL, PRICE_ANALYSIS_24H_WINDOW,
@@ -43,7 +43,6 @@ class ArbitrageOptimizer:
             StrategicDecisionHandler(self.sensor_helper, self.time_analyzer),
             TimeCriticalDecisionHandler(self.sensor_helper, self.time_analyzer),  
             PredictiveDecisionHandler(self.sensor_helper, self.time_analyzer),
-            TraditionalArbitrageHandler(self.sensor_helper, self.time_analyzer),
             HoldDecisionHandler(self.sensor_helper, self.time_analyzer)
         ]
 

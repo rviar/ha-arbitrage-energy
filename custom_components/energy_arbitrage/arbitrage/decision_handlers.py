@@ -263,53 +263,6 @@ class PredictiveDecisionHandler(DecisionHandler):
             strategy=strategy['recommendation']
         )
 
-class TraditionalArbitrageHandler(DecisionHandler):
-    """Handles traditional price-based arbitrage (fallback)."""
-    
-    def can_handle(self, context: DecisionContext) -> bool:
-        return len(context.opportunities) > 0
-    
-    def make_decision(self, context: DecisionContext) -> Optional[DecisionResult]:
-        best_opportunity = context.opportunities[0]
-        battery_level = context.current_state['battery_level']
-        min_reserve = context.current_state['min_reserve_percent']
-        surplus_power = max(0, context.current_state['pv_power'] - context.current_state['load_power'])
-        available_battery = context.current_state.get('available_battery_capacity', 0)
-        
-        if (best_opportunity.get('is_immediate_buy') and 
-            best_opportunity['roi_percent'] >= context.min_arbitrage_margin and
-            self.sensor_helper.is_battery_charging_viable()):
-            
-            charge_power = min(context.max_battery_power, surplus_power if surplus_power > 0 else context.max_battery_power)
-            
-            return DecisionResult(
-                action="charge_arbitrage",
-                reason=f"💰 TRADITIONAL: Good buy opportunity (ROI: {best_opportunity['roi_percent']:.1f}%)",
-                target_power=charge_power,
-                target_battery_level=min(95, battery_level + 10),
-                profit_forecast=best_opportunity['net_profit_per_kwh'] * (charge_power / 1000),
-                opportunity=best_opportunity,
-                strategy="traditional_arbitrage"
-            )
-        
-        elif (best_opportunity.get('is_immediate_sell') and 
-              best_opportunity['roi_percent'] >= context.min_arbitrage_margin and
-              available_battery > 1000):
-            
-            discharge_power = min(context.max_battery_power, available_battery / 4)
-            
-            return DecisionResult(
-                action="sell_arbitrage",
-                reason=f"💰 TRADITIONAL: Good sell opportunity (ROI: {best_opportunity['roi_percent']:.1f}%)",
-                target_power=-discharge_power,
-                target_battery_level=max(min_reserve, battery_level - 10),
-                profit_forecast=best_opportunity['net_profit_per_kwh'] * (discharge_power / 1000),
-                opportunity=best_opportunity,
-                strategy="traditional_arbitrage"
-            )
-        
-        return None
-
 class HoldDecisionHandler(DecisionHandler):
     """Handles hold/wait decisions when no profitable opportunities exist."""
     
