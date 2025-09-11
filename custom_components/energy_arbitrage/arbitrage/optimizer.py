@@ -398,10 +398,6 @@ class ArbitrageOptimizer:
         try:
             price_windows = self.time_analyzer.analyze_price_windows(data.get("price_data", {}), PRICE_ANALYSIS_24H_WINDOW)
             price_situation = self.time_analyzer.get_current_price_situation(price_windows)
-            
-            _LOGGER.info(f"⏰ Price windows found: {len(price_windows)} opportunities")
-            _LOGGER.info(f"⚡ Current situation: {price_situation.get('time_pressure', 'low')} time pressure")
-            
             # 🏆 BEST-OF-BEST SELL SCHEDULE
             try:
                 best_sell_schedule = self.time_analyzer.plan_best_sell_schedule(

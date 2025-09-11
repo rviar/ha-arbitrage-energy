@@ -96,11 +96,6 @@ class TimeWindowAnalyzer:
             _LOGGER.debug(f"Available price_data keys: {list(price_data.keys())}")
             return []
         
-        # Debug current time and data range
-        ha_tz = get_ha_timezone()
-        now = datetime.now(ha_tz)
-        _LOGGER.debug(f"🕐 Current HA time: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-        
         # Find buy windows (low prices) and pass price data for peak analysis
         buy_windows = self._find_low_price_windows(buy_prices, hours_ahead, price_data=buy_prices)
         

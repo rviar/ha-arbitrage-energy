@@ -655,7 +655,6 @@ class EnergyArbitragePriceWindowsSensor(EnergyArbitrageBaseSensor):
             
             # Analyze price windows
             price_data = self.coordinator.data.get("price_data", {})
-            _LOGGER.debug(f"PriceWindowsSensor: price_data keys={list(price_data.keys())}")
             if "buy_prices" in price_data:
                 _LOGGER.debug(f"PriceWindowsSensor: buy_prices count={len(price_data['buy_prices'])}")
             if "sell_prices" in price_data:
