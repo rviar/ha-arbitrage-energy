@@ -8,6 +8,7 @@ from .arbitrage.predictor import EnergyBalancePredictor
 from .arbitrage.sensor_data_helper import SensorDataHelper
 from .arbitrage.strategic_planner import StrategicPlanner
 from .arbitrage.time_analyzer import TimeWindowAnalyzer
+from .arbitrage.policy import MIN_SPREAD_PERCENT, MIN_TRADE_ENERGY_WH, TRADE_COOLDOWN_MINUTES
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
@@ -52,6 +53,7 @@ async def async_setup_entry(
         EnergyArbitrageEnergyForecastSensor(coordinator, entry),
         EnergyArbitragePriceWindowsSensor(coordinator, entry),
         EnergyArbitrageStrategicPlanSensor(coordinator, entry),
+        EnergyArbitragePolicyDecisionSensor(coordinator, entry),
     ]
 
     async_add_entities(entities)
@@ -740,6 +742,91 @@ class EnergyArbitrageStrategicPlanSensor(EnergyArbitrageBaseSensor):
                 "error": str(e),
                 "status": "unavailable"
             }
+
+
+class EnergyArbitragePolicyDecisionSensor(EnergyArbitrageBaseSensor):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "policy_decision")
+        self._attr_name = "Policy Decision"
+        self._attr_icon = "mdi:shield-check"
+
+    @property
+    def native_value(self) -> str:
+        if not self.coordinator.data:
+            return "unknown"
+        try:
+            if hasattr(self.coordinator, 'optimizer'):
+                last = self.coordinator.optimizer.get_last_analysis() or {}
+                price_situation = last.get('price_situation', {})
+                if price_situation.get('immediate_action'):
+                    return price_situation['immediate_action'].get('action', 'hold')
+            # Fallback to decision action
+            return (self.coordinator.data.get("decision") or {}).get("action", "hold")
+        except Exception:
+            return "error"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        if not self.coordinator.data:
+            return {}
+        try:
+            attrs: dict[str, Any] = {}
+            decision = self.coordinator.data.get("decision", {})
+            attrs["decision_action"] = decision.get("action")
+            attrs["decision_reason"] = decision.get("reason")
+            attrs["target_power"] = decision.get("target_power")
+            attrs["target_battery_level"] = decision.get("target_battery_level")
+
+            # Near-term rebuy context
+            last = getattr(self.coordinator, 'optimizer', None).get_last_analysis() if hasattr(self.coordinator, 'optimizer') else {}
+            near = (last or {}).get('near_term_rebuy', {})
+            attrs["near_term_has_opportunity"] = near.get('has_opportunity', False)
+            attrs["near_term_roi_percent"] = round(near.get('roi_percent', 0.0), 2)
+            attrs["near_term_lookahead_h"] = near.get('lookahead_hours')
+            attrs["near_term_min_upcoming_buy"] = near.get('min_upcoming_buy')
+            attrs["current_sell_price"] = near.get('current_sell_price')
+
+            # Price situation
+            price_situation = (last or {}).get('price_situation', {})
+            if price_situation.get('immediate_action'):
+                attrs["immediate_action"] = price_situation['immediate_action'].get('action')
+                attrs["immediate_price"] = price_situation['immediate_action'].get('price')
+                attrs["immediate_urgency"] = price_situation['immediate_action'].get('urgency')
+                attrs["immediate_time_remaining_h"] = price_situation['immediate_action'].get('time_remaining')
+            if price_situation.get('next_opportunity'):
+                attrs["next_action"] = price_situation['next_opportunity'].get('action')
+                attrs["next_price"] = price_situation['next_opportunity'].get('price')
+                attrs["next_urgency"] = price_situation['next_opportunity'].get('urgency')
+                attrs["next_time_until_h"] = price_situation['next_opportunity'].get('time_until_start')
+
+            # Last trades and policy constants
+            if hasattr(self.coordinator, 'optimizer'):
+                last_trades = self.coordinator.optimizer.get_last_trades()
+                attrs.update({
+                    "last_sell_ts": last_trades.get('sell'),
+                    "last_buy_ts": last_trades.get('buy')
+                })
+            attrs.update({
+                "min_trade_energy_wh": MIN_TRADE_ENERGY_WH,
+                "min_spread_percent": MIN_SPREAD_PERCENT,
+                "trade_cooldown_minutes": TRADE_COOLDOWN_MINUTES,
+            })
+
+            # Best opportunity snapshot
+            if hasattr(self.coordinator, 'optimizer'):
+                opps = self.coordinator.optimizer.get_last_opportunities()
+                if opps:
+                    best = opps[0]
+                    attrs.update({
+                        "best_roi_percent": round(best.get('roi_percent', 0.0), 2),
+                        "best_is_immediate_buy": best.get('is_immediate_buy', False),
+                        "best_is_immediate_sell": best.get('is_immediate_sell', False),
+                        "best_net_profit_per_kwh": best.get('net_profit_per_kwh', 0.0)
+                    })
+
+            return attrs
+        except Exception as e:
+            return {"error": str(e)}
 
 
 class EnergyArbitragePriceWindowsSensor(EnergyArbitrageBaseSensor):

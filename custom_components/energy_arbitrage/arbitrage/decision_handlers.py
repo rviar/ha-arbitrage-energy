@@ -14,6 +14,7 @@ from .constants import (
     BATTERY_CHARGE_AGGRESSIVE_MARGIN, AGGRESSIVE_DISCHARGE_ADJUSTMENT,
     MODERATE_CHARGE_ADJUSTMENT, BATTERY_DISCHARGE_CONSERVATIVE_MULTIPLIER
 )
+from .policy import can_sell_now, can_buy_now
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -129,14 +130,20 @@ class TimeCriticalDecisionHandler(DecisionHandler):
         
         urgency_prefix = "⚡ CRITICAL" if context.price_situation.get('time_pressure') == 'high' else "🚨 URGENT"
         
+        buy_policy = can_buy_now({'analysis': context.data.get('analysis', {}), 'current_state': context.current_state})
+        sell_policy = can_sell_now({
+            'analysis': context.data.get('analysis', {}),
+            'current_state': context.current_state,
+            'opportunities': context.opportunities
+        })
         if (immediate['action'] == 'buy' and 
             self.sensor_helper.is_battery_charging_viable() and 
-            best_opportunity and best_opportunity.get('is_immediate_buy')):
+            buy_policy.get('allowed')):
             
             charge_power = min(context.max_battery_power, 
                              surplus_power if surplus_power > 0 else context.max_battery_power)
             
-            return DecisionResult(
+            decision = DecisionResult(
                 action="charge_arbitrage",
                 reason=f"{urgency_prefix}: Buy window ending in {immediate['time_remaining']:.1f}h (Price: {immediate['price']:.3f})",
                 target_power=charge_power,
@@ -145,14 +152,17 @@ class TimeCriticalDecisionHandler(DecisionHandler):
                 opportunity=best_opportunity,
                 strategy="time_critical"
             )
+            _LOGGER.debug(f"TimeCritical BUY approved: reason={buy_policy.get('reason')}")
+            return decision
             
         elif (immediate['action'] == 'sell' and 
-              available_battery > MIN_ENERGY_FOR_SELL):
+              available_battery > MIN_ENERGY_FOR_SELL and
+              sell_policy.get('allowed')):
             
             discharge_power = min(context.max_battery_power, 
                                 available_battery / immediate['time_remaining'])
             
-            return DecisionResult(
+            decision = DecisionResult(
                 action="sell_arbitrage",
                 reason=f"{urgency_prefix}: Sell window ending in {immediate['time_remaining']:.1f}h (Price: {immediate['price']:.3f})",
                 target_power=-discharge_power,
@@ -161,6 +171,8 @@ class TimeCriticalDecisionHandler(DecisionHandler):
                 opportunity=best_opportunity,
                 strategy="time_critical"
             )
+            _LOGGER.debug(f"TimeCritical SELL approved: reason={sell_policy.get('reason')}")
+            return decision
         
         return None
 
@@ -244,13 +256,13 @@ class PredictiveDecisionHandler(DecisionHandler):
         )
     
     def _handle_sell_strategy(self, context, strategy, battery_level, min_reserve, available_battery, best_opportunity):
-        # Allow sell if: (a) an immediate-sell opportunity exists, or (b) near-term rebuy ROI is sufficient
-        analysis = context.data.get('analysis', {})
-        near_term = analysis.get('near_term_rebuy', {})
-        has_immediate = bool(best_opportunity and best_opportunity.get('is_immediate_sell'))
-        has_near_term = near_term.get('has_opportunity', False)
-        if not (available_battery > MIN_ENERGY_FOR_SELL and (has_immediate or has_near_term)):
-            _LOGGER.debug("Predictive sell skipped: available_battery insufficient or no immediate/near-term opportunity")
+        sell_policy = can_sell_now({
+            'analysis': context.data.get('analysis', {}),
+            'current_state': context.current_state,
+            'opportunities': context.opportunities
+        })
+        if not (available_battery > MIN_ENERGY_FOR_SELL and sell_policy.get('allowed')):
+            _LOGGER.debug(f"Predictive sell skipped: reason={sell_policy.get('reason', 'unknown')}")
             return None
         
         # Calculate discharge parameters based on strategy
@@ -265,7 +277,7 @@ class PredictiveDecisionHandler(DecisionHandler):
         
         return DecisionResult(
             action="sell_arbitrage",
-            reason=f"{priority_label}: {strategy['reason']} (ROI: {(best_opportunity['roi_percent'] if best_opportunity else near_term.get('roi_percent', 0)):.1f}%)",
+            reason=f"{priority_label}: {strategy['reason']} (ROI: {(best_opportunity['roi_percent'] if best_opportunity else context.data.get('analysis', {}).get('near_term_rebuy', {}).get('roi_percent', 0)):.1f}%)",
             target_power=-discharge_power,
             target_battery_level=max(min_reserve, battery_level - target_adjustment),
             profit_forecast=((best_opportunity.get('net_profit_per_kwh', 0) if best_opportunity else 0) * (discharge_power / 1000)),

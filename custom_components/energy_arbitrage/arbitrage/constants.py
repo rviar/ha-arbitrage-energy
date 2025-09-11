@@ -25,6 +25,7 @@ TARGET_ENERGY_ACCEPTABLE_THRESHOLD = 0.8  # 80% of target energy is acceptable
 # ROI and Pricing
 HIGH_ROI_MULTIPLIER = 1.5  # Minimum ROI multiplier for traditional arbitrage fallback
 PRICE_ANALYSIS_THRESHOLD_MULTIPLIER = 0.8  # Threshold for price extremes detection
+MIN_SPREAD_PERCENT = 5.0  # Minimum spread percent between sell and buy to consider trading
 
 # Time Pressure and Urgency
 HIGH_PRESSURE_TIME_LIMIT = 3600  # Less than 1 hour = high time pressure (seconds)
@@ -33,6 +34,7 @@ STRATEGIC_PLAN_UPDATE_INTERVAL = 1800  # Update strategic plans every 30 minutes
 # Energy Thresholds
 MIN_ENERGY_FOR_SELL = 1000  # Minimum Wh available to consider selling
 DEFAULT_DAILY_CONSUMPTION_WH = 18000  # Default daily consumption estimate
+MIN_TRADE_ENERGY_WH = 500  # Minimum energy per trade to avoid micro-cycles
 
 # Battery Level Adjustments
 STRATEGIC_CHARGE_LEVEL_ADJUSTMENT = 20  # Battery level increase for strategic charging
@@ -57,6 +59,7 @@ FALLBACK_BATTERY_RESERVE_PERCENT = 50  # Fallback minimum battery reserve
 
 # Time Tolerance
 TIME_WINDOW_TOLERANCE_MINUTES = 30  # Tolerance for time window matching
+TRADE_COOLDOWN_MINUTES = 45  # Cooldown between consecutive trades of same type
 
 # Price Analysis Windows
 PRICE_ANALYSIS_24H_WINDOW = 24  # Hours for 24-hour price extremes analysis

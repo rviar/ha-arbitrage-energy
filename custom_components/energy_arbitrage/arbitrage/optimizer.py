@@ -26,6 +26,7 @@ from .utils import (
     calculate_available_battery_capacity, 
     calculate_arbitrage_profit
 )
+from .policy import is_on_cooldown
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,6 +38,9 @@ class ArbitrageOptimizer:
         self.time_analyzer = TimeWindowAnalyzer(self.sensor_helper)
         self.strategic_planner = StrategicPlanner(self.sensor_helper, self.energy_predictor, self.time_analyzer)
         self._last_plan_update = None
+        self._last_trade_ts = {'sell': None, 'buy': None}
+        self._last_analysis = None
+        self._last_opportunities: List[Dict[str, Any]] = []
         
         # Initialize decision handlers in priority order
         self.decision_handlers = [
@@ -61,6 +65,7 @@ class ArbitrageOptimizer:
         
         current_state = self._analyze_current_state_from_sensors()
         arbitrage_opportunities = self._find_arbitrage_opportunities_from_sensors(data)
+        self._last_opportunities = arbitrage_opportunities
         
         decision = self._make_decision_from_sensors(current_state, arbitrage_opportunities, data)
         
@@ -266,12 +271,29 @@ class ArbitrageOptimizer:
             strategic_recommendation=analysis_data['strategic_recommendation']
         )
         
+        # Enforce cooldown: if we're within cooldown, force hold unless strategic executing now
+        immediate = analysis_data.get('price_situation', {}).get('immediate_action')
+        if immediate and immediate.get('action') in ['sell', 'buy']:
+            action = immediate['action']
+            if is_on_cooldown(self._last_trade_ts.get(action), action):
+                return {
+                    "action": "hold",
+                    "reason": f"Cooldown active for {action}",
+                    "target_power": 0,
+                    "target_battery_level": current_state['battery_level'],
+                    "profit_forecast": 0,
+                    "strategy": "cooldown"
+                }
+
         # Process through decision handlers in priority order
         for handler in self.decision_handlers:
             if handler.can_handle(context):
                 _LOGGER.debug(f"Using {handler.__class__.__name__} for decision")
                 decision = handler.make_decision(context)
                 if decision:
+                    # Record cooldown timestamps
+                    if decision.action in ['sell_arbitrage', 'charge_arbitrage']:
+                        self._last_trade_ts['sell' if decision.action == 'sell_arbitrage' else 'buy'] = get_current_ha_time().isoformat()
                     return self._convert_decision_to_dict(decision)
         
         # Fallback - should never reach here due to HoldDecisionHandler
@@ -385,7 +407,7 @@ class ArbitrageOptimizer:
                 "plan_status": "error"
             }
         
-        return {
+        result = {
             'energy_strategy': energy_strategy,
             'energy_situation': energy_situation,
             'price_windows': price_windows,
@@ -393,6 +415,9 @@ class ArbitrageOptimizer:
             'strategic_recommendation': strategic_recommendation,
             'near_term_rebuy': near_term_rebuy
         }
+        # Store for sensors/diagnostics
+        self._last_analysis = result
+        return result
     
     def _convert_decision_to_dict(self, decision: DecisionResult) -> Dict[str, Any]:
         """Convert DecisionResult to dictionary format expected by the coordinator."""
@@ -487,4 +512,14 @@ class ArbitrageOptimizer:
             'total_cycles': total_cycles,
             'remaining_cycles': max_daily_cycles - today_cycles
         }
+
+    # Accessors for diagnostics/sensors
+    def get_last_analysis(self) -> Dict[str, Any]:
+        return self._last_analysis or {}
+
+    def get_last_opportunities(self) -> List[Dict[str, Any]]:
+        return self._last_opportunities or []
+
+    def get_last_trades(self) -> Dict[str, Optional[str]]:
+        return dict(self._last_trade_ts)
 
