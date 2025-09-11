@@ -768,25 +768,18 @@ class EnergyArbitragePriceWindowsSensor(EnergyArbitrageBaseSensor):
                 attributes[f"buy_window_{i+1}_price"] = f"{window.price:.4f}"
                 attributes[f"buy_window_{i+1}_urgency"] = window.urgency
                 
-                # 🚀 NEW: Peak times optimization info
-                if hasattr(window, 'peak_times') and window.peak_times:
-                    peak_times = window.peak_times[:3]  # Top 3 peak times
-                    attributes[f"buy_window_{i+1}_peak_count"] = len(peak_times)
-                    
-                    # Best time (lowest price for buying)
-                    best_time, best_price = peak_times[0]
+                # Hourly prices inside window (truncated)
+                if hasattr(window, 'hourly_prices') and window.hourly_prices:
+                    truncated = window.hourly_prices[:6]
+                    attributes[f"buy_window_{i+1}_hourly"] = ", ".join([f"{ts.strftime('%H:%M')}={price:.4f}" for ts, price in truncated])
+                    attributes[f"buy_window_{i+1}_hourly_count"] = len(window.hourly_prices)
+                    # Best time/price derived from hourly_prices
+                    best_time, best_price = sorted(window.hourly_prices, key=lambda x: x[1])[0]
                     attributes[f"buy_window_{i+1}_best_time"] = best_time.strftime("%H:%M")
                     attributes[f"buy_window_{i+1}_best_price"] = f"{best_price:.4f}"
                     attributes[f"buy_window_{i+1}_price_improvement"] = f"{((window.price - best_price) / window.price * 100):.1f}%"
-                    
-                    # All peak times for detailed view
-                    peak_list = []
-                    for peak_time, peak_price in peak_times:
-                        peak_list.append(f"{peak_time.strftime('%H:%M')}={peak_price:.4f}")
-                    attributes[f"buy_window_{i+1}_peak_times"] = ", ".join(peak_list)
                 else:
-                    attributes[f"buy_window_{i+1}_peak_count"] = 0
-                    attributes[f"buy_window_{i+1}_optimization_status"] = "no_peak_data"
+                    attributes[f"buy_window_{i+1}_hourly_count"] = 0
                 
                 if window.is_current:
                     attributes[f"buy_window_{i+1}_status"] = "active"
@@ -804,25 +797,18 @@ class EnergyArbitragePriceWindowsSensor(EnergyArbitrageBaseSensor):
                 attributes[f"sell_window_{i+1}_price"] = f"{window.price:.4f}"
                 attributes[f"sell_window_{i+1}_urgency"] = window.urgency
                 
-                # 🚀 NEW: Peak times optimization info
-                if hasattr(window, 'peak_times') and window.peak_times:
-                    peak_times = window.peak_times[:3]  # Top 3 peak times
-                    attributes[f"sell_window_{i+1}_peak_count"] = len(peak_times)
-                    
-                    # Best time (highest price for selling)
-                    best_time, best_price = peak_times[0]
+                # Hourly prices inside window (truncated)
+                if hasattr(window, 'hourly_prices') and window.hourly_prices:
+                    truncated = window.hourly_prices[:6]
+                    attributes[f"sell_window_{i+1}_hourly"] = ", ".join([f"{ts.strftime('%H:%M')}={price:.4f}" for ts, price in truncated])
+                    attributes[f"sell_window_{i+1}_hourly_count"] = len(window.hourly_prices)
+                    # Best time/price derived from hourly_prices
+                    best_time, best_price = sorted(window.hourly_prices, key=lambda x: x[1], reverse=True)[0]
                     attributes[f"sell_window_{i+1}_best_time"] = best_time.strftime("%H:%M")
                     attributes[f"sell_window_{i+1}_best_price"] = f"{best_price:.4f}"
                     attributes[f"sell_window_{i+1}_price_improvement"] = f"{((best_price - window.price) / window.price * 100):.1f}%"
-                    
-                    # All peak times for detailed view
-                    peak_list = []
-                    for peak_time, peak_price in peak_times:
-                        peak_list.append(f"{peak_time.strftime('%H:%M')}={peak_price:.4f}")
-                    attributes[f"sell_window_{i+1}_peak_times"] = ", ".join(peak_list)
                 else:
-                    attributes[f"sell_window_{i+1}_peak_count"] = 0
-                    attributes[f"sell_window_{i+1}_optimization_status"] = "no_peak_data"
+                    attributes[f"sell_window_{i+1}_hourly_count"] = 0
                 
                 if window.is_current:
                     attributes[f"sell_window_{i+1}_status"] = "active"

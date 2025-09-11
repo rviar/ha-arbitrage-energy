@@ -28,7 +28,7 @@ class PriceWindow:
     confidence: float             # Forecast confidence 0-1
     urgency: str                  # "low" | "medium" | "high"
     hass: Any = None              # HA object for timezone
-    peak_times: List[Tuple[datetime, float]] = None  # (timestamp, price) for peaks within window
+    hourly_prices: List[Tuple[datetime, float]] = None  # All hourly prices within this window
     
     @property
     def is_current(self) -> bool:
@@ -304,17 +304,20 @@ class TimeWindowAnalyzer:
             peak_times=None  # Will be populated below
         )
         
-        # Find peak times within this window if price_data is available
+        # Store all hourly prices within the window for simple downstream use
         if price_data:
-            _LOGGER.debug(f"🔍 BUY window: Ищем пиковые времена для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')} из {len(price_data)} ценовых точек")
-            peak_times = self.find_peak_times_in_window(window, price_data, top_n=PEAK_TIMES_TOP_N)
-            window.peak_times = peak_times
-            if peak_times:
-                _LOGGER.debug(f"✅ BUY window найдены пиковые времена: {[(t.strftime('%H:%M'), p) for t, p in peak_times[:3]]}")
-            else:
-                _LOGGER.warning(f"⚠️ BUY window НЕ НАЙДЕНЫ пиковые времена для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}")
+            hourly = []
+            for price_point in price_data:
+                try:
+                    ts = parse_datetime(price_point.get('start', ''))
+                    if ts and window.start_time <= ts <= window.end_time:
+                        hourly.append((ts, float(price_point.get('value', 0))))
+                except Exception:
+                    continue
+            hourly.sort(key=lambda x: x[0])
+            window.hourly_prices = hourly
         else:
-            _LOGGER.warning(f"⚠️ BUY window: price_data отсутствует для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}")
+            window.hourly_prices = []
         
         return window
     
@@ -351,17 +354,20 @@ class TimeWindowAnalyzer:
             peak_times=None  # Will be populated below
         )
         
-        # Find peak times within this window if price_data is available
+        # Store all hourly prices within the window for simple downstream use
         if price_data:
-            _LOGGER.debug(f"🔍 SELL window: Ищем пиковые времена для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')} из {len(price_data)} ценовых точек")
-            peak_times = self.find_peak_times_in_window(window, price_data, top_n=PEAK_TIMES_TOP_N)
-            window.peak_times = peak_times
-            if peak_times:
-                _LOGGER.debug(f"✅ SELL window найдены пиковые времена: {[(t.strftime('%H:%M'), p) for t, p in peak_times[:3]]}")
-            else:
-                _LOGGER.warning(f"⚠️ SELL window НЕ НАЙДЕНЫ пиковые времена для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}")
+            hourly = []
+            for price_point in price_data:
+                try:
+                    ts = parse_datetime(price_point.get('start', ''))
+                    if ts and window.start_time <= ts <= window.end_time:
+                        hourly.append((ts, float(price_point.get('value', 0))))
+                except Exception:
+                    continue
+            hourly.sort(key=lambda x: x[0])
+            window.hourly_prices = hourly
         else:
-            _LOGGER.warning(f"⚠️ SELL window: price_data отсутствует для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}")
+            window.hourly_prices = []
         
         return window
     
@@ -493,14 +499,20 @@ class TimeWindowAnalyzer:
         Returns:
             Tuple of (optimal_start_time, expected_price)
         """
-        peak_times = self.find_peak_times_in_window(window, price_data, top_n=5)
+        # Prefer precomputed hourly prices for efficiency
+        candidate_times = []
+        if hasattr(window, 'hourly_prices') and window.hourly_prices:
+            if window.action == 'sell':
+                candidate_times = sorted(window.hourly_prices, key=lambda x: x[1], reverse=True)[:5]
+            else:
+                candidate_times = sorted(window.hourly_prices, key=lambda x: x[1])[:5]
         
-        if not peak_times:
+        if not candidate_times:
             # Fallback to window start
             return window.start_time, window.price
             
         # Find the best time that allows completion within window
-        for optimal_time, price in peak_times:
+        for optimal_time, price in candidate_times:
             completion_time = optimal_time + timedelta(hours=operation_duration_hours)
             
             # Check if operation can complete within window
@@ -513,7 +525,7 @@ class TimeWindowAnalyzer:
         earliest_start = window.end_time - timedelta(hours=operation_duration_hours)
         if earliest_start >= window.start_time:
             # Find price at earliest viable start time
-            for timestamp, price in peak_times:
+            for timestamp, price in candidate_times:
                 if timestamp >= earliest_start:
                     _LOGGER.info(f"⚡ FALLBACK TIME: {window.action} operation at {timestamp.strftime('%H:%M')} "
                                f"(price: {price:.4f}, duration: {operation_duration_hours:.1f}h)")

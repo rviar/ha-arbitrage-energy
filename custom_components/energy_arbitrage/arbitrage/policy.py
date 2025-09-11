@@ -13,23 +13,6 @@ from .constants import (
 
 _LOGGER = logging.getLogger(__name__)
 
-
-def compute_min_reserve_percent(energy_situation: str, user_min_reserve_percent: float) -> float:
-    """Derive dynamic minimum reserve percent based on energy situation."""
-    # If abundant energy (both days surplus), allow lower reserve; else keep user minimum
-    if energy_situation == 'abundant_energy':
-        return max(40.0, user_min_reserve_percent)
-    return user_min_reserve_percent
-
-
-def meets_min_spread_percent(buy_price: float, sell_price: float) -> bool:
-    """Ensure minimum spread between sell and buy to justify a trade."""
-    if buy_price <= 0 or sell_price <= 0:
-        return False
-    spread = (sell_price - buy_price) / buy_price * 100.0
-    return spread >= MIN_SPREAD_PERCENT
-
-
 def is_on_cooldown(last_trade_ts_iso: str, action: str) -> bool:
     """Check if we are within cooldown for a given trade action."""
     if not last_trade_ts_iso:
