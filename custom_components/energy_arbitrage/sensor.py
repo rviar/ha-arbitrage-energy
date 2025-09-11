@@ -8,7 +8,7 @@ from .arbitrage.predictor import EnergyBalancePredictor
 from .arbitrage.sensor_data_helper import SensorDataHelper
 from .arbitrage.strategic_planner import StrategicPlanner
 from .arbitrage.time_analyzer import TimeWindowAnalyzer
-from .arbitrage.policy import MIN_SPREAD_PERCENT, MIN_TRADE_ENERGY_WH, TRADE_COOLDOWN_MINUTES
+from .arbitrage.constants import MIN_SPREAD_PERCENT, MIN_TRADE_ENERGY_WH, TRADE_COOLDOWN_MINUTES
 
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
 from homeassistant.config_entries import ConfigEntry

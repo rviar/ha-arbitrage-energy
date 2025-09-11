@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timedelta
 from .utils import get_current_ha_time, get_ha_timezone, parse_datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from ..const import CONF_CURRENCY, DEFAULT_CURRENCY
 
 from .sensor_data_helper import SensorDataHelper
