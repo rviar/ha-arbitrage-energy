@@ -266,12 +266,21 @@ class HoldDecisionHandler(DecisionHandler):
     def make_decision(self, context: DecisionContext) -> Optional[DecisionResult]:
         battery_level = context.current_state['battery_level']
         
-        # Prefer detailed policy reason if available
-        policy_reason = context.data.get('analysis', {}).get('last_policy_reason')
+        # Prefer detailed policy reason if available; otherwise use price-situation context, then strategy
+        analysis = context.data.get('analysis', {})
+        policy_reason = analysis.get('last_policy_reason')
+        price_situation = analysis.get('price_situation', {})
+        next_opp = price_situation.get('next_opportunity')
+
         if policy_reason:
             reason = f"🔄 HOLD: {policy_reason}"
+        elif not price_situation.get('immediate_action') and next_opp:
+            reason = (
+                f"🔄 HOLD: waiting_next_window {next_opp.get('action')} in "
+                f"{next_opp.get('time_until_start', 0):.1f}h"
+            )
         elif context.energy_strategy.get('recommendation') == 'hold':
-            reason = f"🔄 STRATEGIC HOLD: {context.energy_strategy.get('reason', 'Waiting for better conditions')}"
+            reason = f"🔄 HOLD: {context.energy_strategy.get('reason', 'Waiting for better conditions')}"
         else:
             reason = "🔄 HOLD: No profitable opportunities available"
         
