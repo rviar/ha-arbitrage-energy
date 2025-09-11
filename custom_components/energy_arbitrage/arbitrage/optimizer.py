@@ -8,14 +8,13 @@ from .sensor_data_helper import SensorDataHelper
 from .exceptions import safe_execute, OptimizationError, log_performance
 from .predictor import EnergyBalancePredictor
 from .time_analyzer import TimeWindowAnalyzer
-from .strategic_planner import StrategicPlanner
 from .decision_handlers import (
     DecisionContext, DecisionResult,
-    StrategicDecisionHandler, TimeCriticalDecisionHandler, 
+    TimeCriticalDecisionHandler, 
     PredictiveDecisionHandler, HoldDecisionHandler
 )
 from .constants import (
-    STRATEGIC_PLAN_UPDATE_INTERVAL, PRICE_ANALYSIS_24H_WINDOW,
+    PRICE_ANALYSIS_24H_WINDOW,
     ENERGY_CALCULATION_1KWH, PRICE_COMPARISON_TOLERANCE,
     FUTURE_BUY_TIME_OFFSET, FUTURE_SELL_TIME_OFFSET,
     DEFAULT_BATTERY_COST, DEFAULT_BATTERY_CYCLES, DEFAULT_DEGRADATION_FACTOR,
@@ -36,7 +35,6 @@ class ArbitrageOptimizer:
         self.sensor_helper = SensorDataHelper(coordinator.hass, coordinator.entry.entry_id, coordinator)
         self.energy_predictor = EnergyBalancePredictor(self.sensor_helper)
         self.time_analyzer = TimeWindowAnalyzer(self.sensor_helper)
-        self.strategic_planner = StrategicPlanner(self.sensor_helper, self.energy_predictor, self.time_analyzer)
         self._last_plan_update = None
         self._last_trade_ts = {'sell': None, 'buy': None}
         self._last_analysis = None
@@ -44,7 +42,6 @@ class ArbitrageOptimizer:
         
         # Initialize decision handlers in priority order
         self.decision_handlers = [
-            StrategicDecisionHandler(self.sensor_helper, self.time_analyzer),
             TimeCriticalDecisionHandler(self.sensor_helper, self.time_analyzer),  
             PredictiveDecisionHandler(self.sensor_helper, self.time_analyzer),
             HoldDecisionHandler(self.sensor_helper, self.time_analyzer)
@@ -267,8 +264,7 @@ class ArbitrageOptimizer:
             max_battery_power=self.sensor_helper.get_max_battery_power(),
             min_arbitrage_margin=self.sensor_helper.get_min_arbitrage_margin(),
             energy_strategy=analysis_data['energy_strategy'],
-            price_situation=analysis_data['price_situation'], 
-            strategic_recommendation=analysis_data['strategic_recommendation']
+            price_situation=analysis_data['price_situation']
         )
         
         # Enforce cooldown: if we're within cooldown, force hold unless strategic executing now
@@ -390,48 +386,11 @@ class ArbitrageOptimizer:
         except Exception as e:
             _LOGGER.debug(f"Near-term rebuy analysis failed: {e}")
 
-        # 🎯 STRATEGIC PLANNING
-        try:
-            now = get_current_ha_time()
-            should_update_plan = (
-                self._last_plan_update is None or
-                (now - self._last_plan_update).total_seconds() > STRATEGIC_PLAN_UPDATE_INTERVAL or
-                price_situation.get('time_pressure') in ['high', 'medium']
-            )
-            
-            if should_update_plan:
-                _LOGGER.info(f"Strategic Plan: Creating new strategic plan. Last update: {self._last_plan_update}")
-                
-                currency = self.coordinator.config.get(CONF_CURRENCY, DEFAULT_CURRENCY)
-                max_battery_power = self.sensor_helper.get_max_battery_power()
-                
-                strategic_plan = self.strategic_planner.create_comprehensive_plan(
-                    current_state['battery_level'], current_state['battery_capacity'], 
-                    max_battery_power, data.get("price_data", {}), 48, currency
-                )
-                self._last_plan_update = now
-                _LOGGER.info(f"🎯 Strategic plan updated: {strategic_plan.scenario} ({len(strategic_plan.operations)} operations)")
-            
-            strategic_recommendation = self.strategic_planner.get_current_recommendation()
-            
-            _LOGGER.info(f"🧭 Strategic status: {strategic_recommendation.get('plan_status', 'unknown')}")
-            _LOGGER.info(f"🎲 Strategic action: {strategic_recommendation.get('action', 'unknown')} - {strategic_recommendation.get('reason', 'No reason')}")
-            
-        except Exception as e:
-            _LOGGER.warning(f"Strategic planning failed: {e}")
-            strategic_recommendation = {
-                "action": "hold",
-                "reason": "Strategic planning unavailable", 
-                "confidence": FALLBACK_CONFIDENCE_LEVEL,
-                "plan_status": "error"
-            }
-        
         result = {
             'energy_strategy': energy_strategy,
             'energy_situation': energy_situation,
             'price_windows': price_windows,
             'price_situation': price_situation,
-            'strategic_recommendation': strategic_recommendation,
             'near_term_rebuy': near_term_rebuy,
             'pv_can_reach_target': pv_can_reach_target,
             'pv_storeable_surplus_wh': pv_storeable_surplus_wh,

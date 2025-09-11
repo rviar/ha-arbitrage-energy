@@ -8,11 +8,10 @@ from typing import Dict, Any, List, Optional
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from .constants import (
-    CONFIDENCE_STRATEGIC_DECISION, CONFIDENCE_HIGH, MAX_BATTERY_LEVEL,
+    MAX_BATTERY_LEVEL,
     BATTERY_POWER_CONSERVATIVE_MULTIPLIER, STRATEGIC_CHARGE_LEVEL_ADJUSTMENT,
     STRATEGIC_DISCHARGE_LEVEL_ADJUSTMENT, MIN_ENERGY_FOR_SELL,
-    BATTERY_CHARGE_AGGRESSIVE_MARGIN, AGGRESSIVE_DISCHARGE_ADJUSTMENT,
-    MODERATE_CHARGE_ADJUSTMENT, BATTERY_DISCHARGE_CONSERVATIVE_MULTIPLIER
+    BATTERY_CHARGE_AGGRESSIVE_MARGIN
 )
 from .policy import can_sell_now, can_buy_now
 
@@ -61,48 +60,7 @@ class DecisionHandler(ABC):
         """Make a decision based on the context."""
         pass
 
-class StrategicDecisionHandler(DecisionHandler):
-    """Handles strategic plan-based decisions (highest priority)."""
-    
-    def can_handle(self, context: DecisionContext) -> bool:
-        return (
-            context.strategic_recommendation.get('confidence', 0) >= CONFIDENCE_STRATEGIC_DECISION and
-            context.strategic_recommendation.get('plan_status') in ['executing', 'waiting', 'monitoring'] and
-            context.strategic_recommendation.get('action') != 'hold'
-        )
-    
-    def make_decision(self, context: DecisionContext) -> Optional[DecisionResult]:
-        rec = context.strategic_recommendation
-        battery_level = context.current_state['battery_level']
-        min_reserve = context.current_state['min_reserve_percent']
-        
-        if rec['action'] == 'charge_arbitrage':
-            return DecisionResult(
-                action="charge_arbitrage",
-                reason=rec['reason'],
-                target_power=rec.get('target_power', context.max_battery_power * BATTERY_POWER_CONSERVATIVE_MULTIPLIER),
-                target_battery_level=min(MAX_BATTERY_LEVEL, battery_level + STRATEGIC_CHARGE_LEVEL_ADJUSTMENT),
-                profit_forecast=0,
-                opportunity={"strategic": True, "priority": rec.get('priority', 1)},
-                strategy="strategic_plan",
-                plan_status=rec.get('plan_status'),
-                confidence=rec.get('confidence', CONFIDENCE_HIGH)
-            )
-            
-        elif rec['action'] == 'sell_arbitrage':
-            return DecisionResult(
-                action="sell_arbitrage",
-                reason=rec['reason'],
-                target_power=rec.get('target_power', -context.max_battery_power * BATTERY_POWER_CONSERVATIVE_MULTIPLIER),
-                target_battery_level=max(min_reserve, battery_level - STRATEGIC_DISCHARGE_LEVEL_ADJUSTMENT),
-                profit_forecast=0,
-                opportunity={"strategic": True, "priority": rec.get('priority', 1)},
-                strategy="strategic_plan", 
-                plan_status=rec.get('plan_status'),
-                confidence=rec.get('confidence', CONFIDENCE_HIGH)
-            )
-        
-        return None
+# StrategicDecisionHandler removed (planner deprecated)
 
 class TimeCriticalDecisionHandler(DecisionHandler):
     """Handles time-sensitive arbitrage opportunities."""
@@ -294,10 +252,8 @@ class HoldDecisionHandler(DecisionHandler):
     def make_decision(self, context: DecisionContext) -> Optional[DecisionResult]:
         battery_level = context.current_state['battery_level']
         
-        # Smart hold with strategic context
-        if context.strategic_recommendation.get('plan_status') in ['waiting', 'monitoring']:
-            reason = f"🎯 STRATEGIC HOLD: {context.strategic_recommendation.get('reason', 'Planning for future opportunity')}"
-        elif context.energy_strategy.get('recommendation') == 'hold':
+        # Smart hold with strategy context
+        if context.energy_strategy.get('recommendation') == 'hold':
             reason = f"🔄 STRATEGIC HOLD: {context.energy_strategy.get('reason', 'Waiting for better conditions')}"
         else:
             reason = "🔄 HOLD: No profitable opportunities available"
