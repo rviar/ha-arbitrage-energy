@@ -365,11 +365,7 @@ class ArbitrageOptimizer:
             energy_strategy = self.energy_predictor.assess_battery_strategy(
                 current_state['battery_level'], current_state['battery_capacity']
             )
-            energy_situation = self.energy_predictor.get_energy_situation_summary()
-            
-            _LOGGER.info(f"🔮 Energy forecast: {energy_situation}")
-            _LOGGER.info(f"🎯 Strategy recommendation: {energy_strategy['recommendation']} - {energy_strategy['reason']}")
-            
+            energy_situation = self.energy_predictor.get_energy_situation_summary()            
         except Exception as e:
             _LOGGER.warning(f"Predictive analysis failed, falling back to basic logic: {e}")
             energy_strategy = {

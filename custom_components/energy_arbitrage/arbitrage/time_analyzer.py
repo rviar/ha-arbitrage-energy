@@ -100,14 +100,6 @@ class TimeWindowAnalyzer:
         ha_tz = get_ha_timezone()
         now = datetime.now(ha_tz)
         _LOGGER.debug(f"🕐 Current HA time: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-        if buy_prices:
-            first_buy = buy_prices[0].get('start', 'unknown')
-            last_buy = buy_prices[-1].get('start', 'unknown')
-            _LOGGER.debug(f"📊 Buy data range: {first_buy} to {last_buy}")
-        if sell_prices:
-            first_sell = sell_prices[0].get('start', 'unknown')
-            last_sell = sell_prices[-1].get('start', 'unknown')
-            _LOGGER.debug(f"💰 Sell data range: {first_sell} to {last_sell}")
         
         # Find buy windows (low prices) and pass price data for peak analysis
         buy_windows = self._find_low_price_windows(buy_prices, hours_ahead, price_data=buy_prices)
@@ -275,10 +267,6 @@ class TimeWindowAnalyzer:
         if price_data:
             peak_times = self.find_peak_times_in_window(window, price_data, top_n=PEAK_TIMES_TOP_N)
             window.peak_times = peak_times
-            if peak_times:
-                _LOGGER.debug(f"✅ BUY window найдены пиковые времена: {[(t.strftime('%H:%M'), p) for t, p in peak_times[:3]]}")
-            else:
-                _LOGGER.warning(f"⚠️ BUY window НЕ НАЙДЕНЫ пиковые времена для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}")
         else:
             _LOGGER.warning(f"⚠️ BUY window: price_data отсутствует для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}")
         
@@ -320,10 +308,6 @@ class TimeWindowAnalyzer:
         if price_data:
             peak_times = self.find_peak_times_in_window(window, price_data, top_n=PEAK_TIMES_TOP_N)
             window.peak_times = peak_times
-            if peak_times:
-                _LOGGER.debug(f"✅ SELL window найдены пиковые времена: {[(t.strftime('%H:%M'), p) for t, p in peak_times[:3]]}")
-            else:
-                _LOGGER.warning(f"⚠️ SELL window НЕ НАЙДЕНЫ пиковые времена для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}")
         else:
             _LOGGER.warning(f"⚠️ SELL window: price_data отсутствует для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}")
         
@@ -425,13 +409,9 @@ class TimeWindowAnalyzer:
         if window.action == 'sell':
             # For selling: highest prices first (descending)
             peak_times.sort(key=lambda x: x[1], reverse=True)
-            _LOGGER.debug(f"🔍 SELL window {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}: "
-                         f"Top prices: {[(t.strftime('%H:%M'), p) for t, p in peak_times[:top_n]]}")
         else:
             # For buying: lowest prices first (ascending)  
             peak_times.sort(key=lambda x: x[1])
-            _LOGGER.debug(f"🔍 BUY window {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}: "
-                         f"Top prices: {[(t.strftime('%H:%M'), p) for t, p in peak_times[:top_n]]}")
         
         return peak_times[:top_n]
     
