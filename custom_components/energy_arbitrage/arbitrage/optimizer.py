@@ -95,7 +95,8 @@ class ArbitrageOptimizer:
         # Calculate derived values using configuration
         surplus_power = max(0, pv_power - load_power)  # Positive when PV > Load
         net_consumption = load_power - pv_power        # Net consumption after PV
-        available_battery_wh = calculate_available_battery_capacity(battery_level, battery_capacity, min_reserve)
+        # Correct order: (level_percent, min_reserve_percent, total_capacity_wh)
+        available_battery_wh = calculate_available_battery_capacity(battery_level, min_reserve, battery_capacity)
         
         # Calculate battery power from grid power (approximation)
         # Negative = charging, positive = discharging
@@ -268,10 +269,11 @@ class ArbitrageOptimizer:
         analysis_data = self._gather_analysis_data(current_state, data)
         
         # Calculate available battery capacity for context
+        # Correct order: (level_percent, min_reserve_percent, total_capacity_wh)
         available_battery_capacity = calculate_available_battery_capacity(
-            current_state['battery_level'], 
-            current_state['battery_capacity'], 
-            current_state['min_reserve_percent']
+            current_state['battery_level'],
+            current_state['min_reserve_percent'],
+            current_state['battery_capacity']
         )
         current_state['available_battery_capacity'] = available_battery_capacity
         
