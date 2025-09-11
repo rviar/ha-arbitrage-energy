@@ -20,7 +20,7 @@ from .constants import (
     FUTURE_BUY_TIME_OFFSET, FUTURE_SELL_TIME_OFFSET,
     DEFAULT_BATTERY_COST, DEFAULT_BATTERY_CYCLES, DEFAULT_DEGRADATION_FACTOR,
     TIME_WINDOW_TOLERANCE_MINUTES, FALLBACK_BATTERY_LEVEL_PERCENT,
-    FALLBACK_CONFIDENCE_LEVEL
+    FALLBACK_CONFIDENCE_LEVEL, NEAR_TERM_REBUY_LOOKAHEAD_HOURS
 )
 from .utils import (
     calculate_available_battery_capacity, 
@@ -319,6 +319,36 @@ class ArbitrageOptimizer:
             price_windows = []
             price_situation = {'time_pressure': 'low', 'current_opportunities': 0}
         
+        # 📉 NEAR-TERM REBUY ANALYSIS (sell-now, rebuy-soon)
+        near_term_rebuy = {
+            'lookahead_hours': NEAR_TERM_REBUY_LOOKAHEAD_HOURS,
+            'min_upcoming_buy': None,
+            'current_sell_price': None,
+            'roi_percent': 0.0,
+            'has_opportunity': False
+        }
+        try:
+            current_sell_price = self.sensor_helper.get_current_sell_price()
+            near_term_rebuy['current_sell_price'] = current_sell_price
+
+            if price_windows:
+                # Use HA time for filtering windows
+                ha_now = get_current_ha_time()
+                horizon = ha_now + timedelta(hours=NEAR_TERM_REBUY_LOOKAHEAD_HOURS)
+                upcoming_buy_prices = [
+                    w.price for w in price_windows
+                    if w.action == 'buy' and w.start_time <= horizon
+                ]
+                if upcoming_buy_prices:
+                    min_upcoming_buy = min(upcoming_buy_prices)
+                    near_term_rebuy['min_upcoming_buy'] = min_upcoming_buy
+                    # ROI if we sell now and buy at the upcoming low
+                    roi = self.sensor_helper.get_arbitrage_roi(min_upcoming_buy, current_sell_price)
+                    near_term_rebuy['roi_percent'] = roi
+                    near_term_rebuy['has_opportunity'] = roi >= self.sensor_helper.get_min_arbitrage_margin()
+        except Exception as e:
+            _LOGGER.debug(f"Near-term rebuy analysis failed: {e}")
+
         # 🎯 STRATEGIC PLANNING
         try:
             now = get_current_ha_time()
@@ -360,7 +390,8 @@ class ArbitrageOptimizer:
             'energy_situation': energy_situation,
             'price_windows': price_windows,
             'price_situation': price_situation,
-            'strategic_recommendation': strategic_recommendation
+            'strategic_recommendation': strategic_recommendation,
+            'near_term_rebuy': near_term_rebuy
         }
     
     def _convert_decision_to_dict(self, decision: DecisionResult) -> Dict[str, Any]:

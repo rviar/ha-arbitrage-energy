@@ -468,8 +468,17 @@ class StrategicPlanner:
         sell_windows = [w for w in price_windows if w.action == 'sell']
         sell_windows.sort(key=lambda w: -w.price)  # Highest price first
         
-        # Conservative selling - keep some battery for unexpected needs
-        min_keep_level = max(50, self.sensor_helper.get_min_arbitrage_depth())  # Keep at least 50%
+        # Adjust reserve: if both days have surplus, allow lower reserve; otherwise keep conservative
+        # Use predictor to check surplus scenario indirectly via energy_strategy
+        try:
+            energy_strategy = self.energy_predictor.assess_battery_strategy(current_battery_level, battery_capacity_wh)
+            both_days_surplus = energy_strategy.get('recommendation') == 'sell_aggressive'
+        except Exception:
+            both_days_surplus = False
+
+        base_min = self.sensor_helper.get_min_arbitrage_depth()
+        # Keep at least 40% when both days are surplus, else at least 50%
+        min_keep_level = max(40 if both_days_surplus else 50, base_min)
         available_energy = ((current_battery_level - min_keep_level) / 100) * battery_capacity_wh
         
         if available_energy > 500:  # Only sell if we have significant surplus

@@ -69,6 +69,7 @@ PRICE_COMPARISON_TOLERANCE = 0.001  # Tolerance for price equality comparison
 # Time Approximations (hours)
 FUTURE_BUY_TIME_OFFSET = 12  # Hours offset for future buy time approximation
 FUTURE_SELL_TIME_OFFSET = 18  # Hours offset for future sell time approximation
+NEAR_TERM_REBUY_LOOKAHEAD_HOURS = 6  # Lookahead window for sell-now, rebuy-soon analysis
 
 # Battery Specifications (defaults)
 DEFAULT_BATTERY_COST = 7500  # Default battery cost in currency units

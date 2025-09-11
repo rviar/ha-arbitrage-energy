@@ -118,7 +118,14 @@ class TimeCriticalDecisionHandler(DecisionHandler):
         min_reserve = context.current_state['min_reserve_percent']
         surplus_power = max(0, context.current_state['pv_power'] - context.current_state['load_power'])
         available_battery = context.current_state.get('available_battery_capacity', 0)
-        best_opportunity = context.opportunities[0] if context.opportunities else None
+        # Prefer opportunity matching the immediate action to avoid future ROI mismatch
+        if context.opportunities:
+            if immediate['action'] == 'sell':
+                best_opportunity = next((o for o in context.opportunities if o.get('is_immediate_sell')), context.opportunities[0])
+            else:
+                best_opportunity = next((o for o in context.opportunities if o.get('is_immediate_buy')), context.opportunities[0])
+        else:
+            best_opportunity = None
         
         urgency_prefix = "⚡ CRITICAL" if context.price_situation.get('time_pressure') == 'high' else "🚨 URGENT"
         
@@ -140,8 +147,7 @@ class TimeCriticalDecisionHandler(DecisionHandler):
             )
             
         elif (immediate['action'] == 'sell' and 
-              available_battery > MIN_ENERGY_FOR_SELL and 
-              best_opportunity and best_opportunity.get('is_immediate_sell')):
+              available_battery > MIN_ENERGY_FOR_SELL):
             
             discharge_power = min(context.max_battery_power, 
                                 available_battery / immediate['time_remaining'])
@@ -151,7 +157,7 @@ class TimeCriticalDecisionHandler(DecisionHandler):
                 reason=f"{urgency_prefix}: Sell window ending in {immediate['time_remaining']:.1f}h (Price: {immediate['price']:.3f})",
                 target_power=-discharge_power,
                 target_battery_level=max(min_reserve, battery_level - STRATEGIC_DISCHARGE_LEVEL_ADJUSTMENT),
-                profit_forecast=best_opportunity.get('net_profit_per_kwh', 0) * (discharge_power / 1000),
+                profit_forecast=((best_opportunity.get('net_profit_per_kwh', 0) if best_opportunity else 0) * (discharge_power / 1000)),
                 opportunity=best_opportunity,
                 strategy="time_critical"
             )
@@ -238,9 +244,13 @@ class PredictiveDecisionHandler(DecisionHandler):
         )
     
     def _handle_sell_strategy(self, context, strategy, battery_level, min_reserve, available_battery, best_opportunity):
-        if not (best_opportunity and best_opportunity.get('is_immediate_sell') and 
-                available_battery > MIN_ENERGY_FOR_SELL and 
-                best_opportunity['roi_percent'] >= context.min_arbitrage_margin):
+        # Allow sell if: (a) an immediate-sell opportunity exists, or (b) near-term rebuy ROI is sufficient
+        analysis = context.data.get('analysis', {})
+        near_term = analysis.get('near_term_rebuy', {})
+        has_immediate = bool(best_opportunity and best_opportunity.get('is_immediate_sell'))
+        has_near_term = near_term.get('has_opportunity', False)
+        if not (available_battery > MIN_ENERGY_FOR_SELL and (has_immediate or has_near_term)):
+            _LOGGER.debug("Predictive sell skipped: available_battery insufficient or no immediate/near-term opportunity")
             return None
         
         # Calculate discharge parameters based on strategy
@@ -255,10 +265,10 @@ class PredictiveDecisionHandler(DecisionHandler):
         
         return DecisionResult(
             action="sell_arbitrage",
-            reason=f"{priority_label}: {strategy['reason']} (ROI: {best_opportunity['roi_percent']:.1f}%)",
+            reason=f"{priority_label}: {strategy['reason']} (ROI: {(best_opportunity['roi_percent'] if best_opportunity else near_term.get('roi_percent', 0)):.1f}%)",
             target_power=-discharge_power,
             target_battery_level=max(min_reserve, battery_level - target_adjustment),
-            profit_forecast=best_opportunity['net_profit_per_kwh'] * (discharge_power / 1000),
+            profit_forecast=((best_opportunity.get('net_profit_per_kwh', 0) if best_opportunity else 0) * (discharge_power / 1000)),
             opportunity=best_opportunity,
             strategy=strategy['recommendation']
         )
