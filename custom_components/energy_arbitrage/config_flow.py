@@ -130,7 +130,7 @@ DATA_SCHEMA_DEGRADATION = vol.Schema({
     ),
 })
 
-class EnergyArbitrageConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     def __init__(self):
