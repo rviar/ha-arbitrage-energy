@@ -35,6 +35,8 @@ STRATEGIC_PLAN_UPDATE_INTERVAL = 1800  # Update strategic plans every 30 minutes
 MIN_ENERGY_FOR_SELL = 1000  # Minimum Wh available to consider selling
 DEFAULT_DAILY_CONSUMPTION_WH = 18000  # Default daily consumption estimate
 MIN_TRADE_ENERGY_WH = 500  # Minimum energy per trade to avoid micro-cycles
+SURPLUS_POWER_IGNORE_W = 100  # Ignore tiny PV surplus below this when deciding grid buys
+PV_SURPLUS_BLOCK_MARGIN_PERCENT = 3.0  # Allow small margin when comparing forecast PV charge to target
 
 # Battery Level Adjustments
 STRATEGIC_CHARGE_LEVEL_ADJUSTMENT = 20  # Battery level increase for strategic charging

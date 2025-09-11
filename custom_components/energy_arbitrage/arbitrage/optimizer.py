@@ -328,6 +328,25 @@ class ArbitrageOptimizer:
             }
             energy_situation = 'unknown'
         
+        # 🔆 PV SURPLUS VS TARGET CHECK
+        pv_can_reach_target = False
+        pv_storeable_surplus_wh = 0.0
+        required_wh_to_target = 0.0
+        try:
+            balances = self.energy_predictor.calculate_combined_balance()
+            # Available PV surplus next 48h
+            pv_surplus_next48 = max(0.0, balances['today'].net_balance_wh) + max(0.0, balances['tomorrow'].net_balance_wh)
+            # Battery headroom
+            battery_capacity = current_state['battery_capacity']
+            current_wh = (current_state['battery_level'] / 100.0) * battery_capacity
+            target_wh = (energy_strategy.get('target_battery_level', current_state['battery_level']) / 100.0) * battery_capacity
+            required_wh_to_target = max(0.0, target_wh - current_wh)
+            headroom_wh = max(0.0, battery_capacity - current_wh)
+            pv_storeable_surplus_wh = max(0.0, min(pv_surplus_next48, headroom_wh))
+            pv_can_reach_target = pv_storeable_surplus_wh >= required_wh_to_target * 0.97  # allow small losses
+        except Exception as e:
+            _LOGGER.debug(f"PV surplus vs target check failed: {e}")
+        
         # 🕐 TIME WINDOW ANALYSIS  
         try:
             price_windows = self.time_analyzer.analyze_price_windows(data.get("price_data", {}), PRICE_ANALYSIS_24H_WINDOW)
@@ -413,7 +432,10 @@ class ArbitrageOptimizer:
             'price_windows': price_windows,
             'price_situation': price_situation,
             'strategic_recommendation': strategic_recommendation,
-            'near_term_rebuy': near_term_rebuy
+            'near_term_rebuy': near_term_rebuy,
+            'pv_can_reach_target': pv_can_reach_target,
+            'pv_storeable_surplus_wh': pv_storeable_surplus_wh,
+            'required_wh_to_target': required_wh_to_target
         }
         # Store for sensors/diagnostics
         self._last_analysis = result

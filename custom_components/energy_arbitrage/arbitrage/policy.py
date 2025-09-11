@@ -7,7 +7,8 @@ from datetime import datetime, timedelta
 from typing import Dict, Any
 from .utils import get_current_ha_time
 from .constants import (
-    MIN_TRADE_ENERGY_WH, TRADE_COOLDOWN_MINUTES, MIN_SPREAD_PERCENT
+    MIN_TRADE_ENERGY_WH, TRADE_COOLDOWN_MINUTES, MIN_SPREAD_PERCENT,
+    SURPLUS_POWER_IGNORE_W, PV_SURPLUS_BLOCK_MARGIN_PERCENT
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -70,6 +71,7 @@ def can_buy_now(context: Dict[str, Any]) -> Dict[str, Any]:
     analysis = context.get('analysis', {})
     price_situation = analysis.get('price_situation', {})
     current_state = context.get('current_state', {})
+    energy_strategy = analysis.get('energy_strategy', {})
 
     # Ensure there is battery headroom
     battery_level = current_state.get('battery_level', 50.0)
@@ -79,6 +81,22 @@ def can_buy_now(context: Dict[str, Any]) -> Dict[str, Any]:
     current_wh = battery_capacity * battery_level / 100.0
     if max_wh - current_wh < MIN_TRADE_ENERGY_WH:
         return {'allowed': False, 'reason': 'insufficient_headroom'}
+
+    # PV surplus guard: do not buy if PV already covers (or almost covers) the load
+    pv_power = current_state.get('pv_power', 0)
+    load_power = current_state.get('load_power', 0)
+    net_surplus = max(0, pv_power - load_power)
+    immediate = price_situation.get('immediate_action') or {}
+    time_remaining_h = immediate.get('time_remaining', 1.0)
+    required_wh_to_target = analysis.get('required_wh_to_target', 0.0)
+    potential_surplus_wh = net_surplus * time_remaining_h
+    # If current PV surplus over the duration of the buy window can meaningfully charge toward the target, block buying now
+    if net_surplus > SURPLUS_POWER_IGNORE_W and potential_surplus_wh >= min(MIN_TRADE_ENERGY_WH, max(0.0, required_wh_to_target)):
+        return {'allowed': False, 'reason': 'pv_surplus_now'}
+
+    # Forecast guard: if PV surplus (storeable) can cover required energy to reach target, don't buy
+    if analysis.get('pv_can_reach_target') is True:
+        return {'allowed': False, 'reason': 'pv_forecast_will_charge'}
 
     immediate = price_situation.get('immediate_action')
     if not immediate or immediate.get('action') != 'buy':
