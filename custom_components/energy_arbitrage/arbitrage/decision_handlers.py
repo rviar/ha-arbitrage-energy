@@ -274,7 +274,8 @@ class HoldDecisionHandler(DecisionHandler):
                 f"{next_opp.get('time_until_start', 0):.1f}h"
             )
         elif context.energy_strategy.get('recommendation') == 'hold':
-            reason = f"🔄 HOLD: {context.energy_strategy.get('reason', 'Waiting for better conditions')}"
+            hold_reason = context.energy_strategy.get('reason') or 'Waiting for better conditions'
+            reason = f"🔄 HOLD: {hold_reason}"
         else:
             reason = "🔄 HOLD: No profitable opportunities available"
         

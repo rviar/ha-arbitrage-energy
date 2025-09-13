@@ -396,7 +396,8 @@ class ArbitrageOptimizer:
             energy_strategy = {
                 'recommendation': 'hold', 
                 'urgency': 'low', 
-                'target_battery_level': current_state['battery_level']
+                'target_battery_level': current_state['battery_level'],
+                'reason': f"predictive_error: {str(e)}"
             }
             energy_situation = 'unknown'
         
@@ -461,6 +462,13 @@ class ArbitrageOptimizer:
             price_situation = {'time_pressure': 'low', 'current_opportunities': 0}
             best_sell_schedule = []
             best_buy_schedule = []
+            # Provide explicit policy reason for hold context
+            try:
+                # This key is read by HoldDecisionHandler as policy_reason
+                # and will surface as a descriptive HOLD reason
+                last_policy_reason = 'price_window_analysis_failed'
+            except Exception:
+                pass
         
         # 📉 NEAR-TERM REBUY ANALYSIS (sell-now, rebuy-soon)
         near_term_rebuy = {
@@ -504,6 +512,9 @@ class ArbitrageOptimizer:
             'best_sell_schedule': best_sell_schedule,
             'best_buy_schedule': best_buy_schedule
         }
+        # Attach last_policy_reason if set during error paths
+        if 'last_policy_reason' not in result and 'last_policy_reason' in locals():
+            result['last_policy_reason'] = last_policy_reason
         # Store for sensors/diagnostics
         self._last_analysis = result
         return result
