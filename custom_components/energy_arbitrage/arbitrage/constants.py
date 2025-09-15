@@ -81,17 +81,7 @@ DEFAULT_BATTERY_COST = 7500  # Default battery cost in currency units
 DEFAULT_BATTERY_CYCLES = 6000  # Default battery cycle life
 DEFAULT_DEGRADATION_FACTOR = 1.0  # Default battery degradation factor
 
-# Price Window Analysis
-PRICE_QUARTILE_DIVISOR = 4  # Divisor for quartile calculations
-PRICE_TOLERANCE_HIGH_MULTIPLIER = 1.1  # 110% for upper price tolerance
-PRICE_TOLERANCE_LOW_MULTIPLIER = 0.9  # 90% for lower price tolerance
-
-# Urgency Thresholds (hours)
-URGENCY_HIGH_THRESHOLD_HOURS = 1  # High urgency if starting within 1 hour
-URGENCY_MEDIUM_THRESHOLD_HOURS = 4  # Medium urgency if starting within 4 hours
-
-# Peak Time Analysis
-PEAK_TIMES_TOP_N = 3  # Number of peak times to identify per window
+ 
 
 # Fallback Values
 FALLBACK_BATTERY_LEVEL_PERCENT = 50.0  # Fallback battery level when sensors fail

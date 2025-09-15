@@ -4,14 +4,12 @@ Analyzes price data to find optimal buy/sell windows with time constraints.
 """
 
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, List, Optional, Tuple
+from datetime import datetime, timedelta
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from .utils import get_current_ha_time, get_ha_timezone, parse_datetime
 from .constants import (
-    PRICE_QUARTILE_DIVISOR, PRICE_TOLERANCE_HIGH_MULTIPLIER, PRICE_TOLERANCE_LOW_MULTIPLIER,
-    URGENCY_HIGH_THRESHOLD_HOURS, URGENCY_MEDIUM_THRESHOLD_HOURS,
-    PEAK_TIMES_TOP_N, TARGET_ENERGY_ACCEPTABLE_THRESHOLD, SECONDS_PER_HOUR
+    TARGET_ENERGY_ACCEPTABLE_THRESHOLD, SECONDS_PER_HOUR
 )
 from .exceptions import safe_execute, log_performance
 
@@ -27,7 +25,6 @@ class PriceWindow:
     duration_hours: float         # Window duration in hours
     confidence: float             # Forecast confidence 0-1
     urgency: str                  # "low" | "medium" | "high"
-    peak_times: List[Tuple[datetime, float]] = None  # (timestamp, price) for peaks within window
     
     @property
     def is_current(self) -> bool:
@@ -82,370 +79,96 @@ class TimeWindowAnalyzer:
     
     def __init__(self, sensor_helper):
         self.sensor_helper = sensor_helper
+        # configurable number of top slots
+        self._top_n_slots = 3
         
     @safe_execute(default_return=[])
     @log_performance
     def analyze_price_windows(self, price_data: Dict[str, Any], hours_ahead: int = 24) -> List[PriceWindow]:
-        """Analyze price data to find optimal trading windows."""
-        
+        """Analyze price data by selecting top-N one-hour windows for buy/sell.
+
+        Simplified approach:
+        - For sell: pick top-N highest-price hours within horizon
+        - For buy: pick top-N lowest-price hours within horizon
+        - Return as one-hour `PriceWindow`s, deterministic ordering
+        """
         buy_prices = price_data.get("buy_prices", [])
         sell_prices = price_data.get("sell_prices", [])
-        
+
         if not buy_prices or not sell_prices:
             _LOGGER.warning(f"Price data missing: buy_prices={len(buy_prices) if buy_prices else 0}, sell_prices={len(sell_prices) if sell_prices else 0}")
             _LOGGER.debug(f"Available price_data keys: {list(price_data.keys())}")
             return []
-        
-        # Find buy windows (low prices) and pass price data for peak analysis
-        buy_windows = self._find_low_price_windows(buy_prices, hours_ahead, price_data=buy_prices)
-        
-        # Find sell windows (high prices) and pass price data for peak analysis
-        sell_windows = self._find_high_price_windows(sell_prices, hours_ahead, price_data=sell_prices)
-        
-        # Combine and sort by urgency
-        all_windows = buy_windows + sell_windows
-        all_windows.sort(key=lambda w: (w.urgency != 'high', w.urgency != 'medium', w.start_time))
-        
-        return all_windows
-    
-    def _find_price_windows(self, prices: List[Dict], hours_ahead: int, 
-                           action_type: str, price_data: List[Dict] = None) -> List[PriceWindow]:
-        """Unified method to find price windows for both buying and selling."""
-        
-        if not prices:
-            return []
-        
-        # Determine quartile and threshold based on action type
-        is_buy = action_type == 'buy'
-        
-        if is_buy:
-            # Sort prices to find bottom quartile for buying
-            sorted_prices = sorted(prices, key=lambda p: p.get('value', float('inf')))
-            quartile_size = max(1, len(sorted_prices) // PRICE_QUARTILE_DIVISOR)
-            threshold = sorted_prices[quartile_size - 1].get('value', 0)
-            multiplier = PRICE_TOLERANCE_HIGH_MULTIPLIER  # 1.1 for buy (allow 10% higher)
-        else:
-            # Sort prices to find top quartile for selling
-            sorted_prices = sorted(prices, key=lambda p: p.get('value', 0), reverse=True)
-            quartile_size = max(1, len(sorted_prices) // PRICE_QUARTILE_DIVISOR)
-            threshold = sorted_prices[quartile_size - 1].get('value', float('inf'))
-            multiplier = PRICE_TOLERANCE_LOW_MULTIPLIER   # 0.9 for sell (allow 10% lower)
-                    
-        # Find consecutive price periods that meet criteria
-        windows = []
-        current_window = None
-        # Precompute HA now and horizon once
+
         ha_tz = get_ha_timezone()
         now = datetime.now(ha_tz)
         horizon = now + timedelta(hours=hours_ahead)
-        
-        for price_point in prices:
-            try:
-                price = price_point.get('value', float('inf') if is_buy else 0)
-                timestamp_str = price_point.get('start', '')
-                
-                # Parse timestamp using unified function
-                timestamp = parse_datetime(timestamp_str)
-                if not timestamp:
-                    _LOGGER.warning(f"Failed to parse {action_type} timestamp: {timestamp_str}")
-                    continue
-                
-                # Skip past prices EXCEPT keep the current hour (include windows that already started)
-                if (timestamp + timedelta(hours=1)) <= now:
-                    continue
-                
-                # Skip prices too far in future
-                if timestamp > horizon:
-                    continue
-                
-                # Check if price meets criteria
-                price_meets_criteria = (
-                    price <= threshold * multiplier if is_buy else 
-                    price >= threshold * multiplier
-                )
-                
-                if price_meets_criteria:
-                    if current_window is None:
-                        # Start new window
-                        current_window = {
-                            'start': timestamp,
-                            'end': timestamp + timedelta(hours=1),
-                            'price': price
-                        }
-                    else:
-                        # Extend current window if consecutive
-                        if timestamp <= current_window['end']:
-                            current_window['end'] = timestamp + timedelta(hours=1)
-                            # For buy: take minimum price, for sell: take maximum price
-                            current_window['price'] = (
-                                min(current_window['price'], price) if is_buy else 
-                                max(current_window['price'], price)
-                            )
-                        else:
-                            # Gap found, save current window and start new one
-                            window = (
-                                self._create_buy_window(current_window, price_data) if is_buy else
-                                self._create_sell_window(current_window, price_data)
-                            )
-                            windows.append(window)
-                            
-                            current_window = {
-                                'start': timestamp,
-                                'end': timestamp + timedelta(hours=1),
-                                'price': price
-                            }
-                else:
-                    if current_window:
-                        window = (
-                            self._create_buy_window(current_window, price_data) if is_buy else
-                            self._create_sell_window(current_window, price_data)
-                        )
-                        windows.append(window)
-                    current_window = None
-                    
-            except Exception as e:
-                _LOGGER.debug(f"Error processing price point: {e}")
-                continue
-        
-        # Don't forget last window
-        if current_window:
-            window = (
-                self._create_buy_window(current_window, price_data) if is_buy else
-                self._create_sell_window(current_window, price_data)
-            )
-            windows.append(window)
-        
-        return windows
 
-    def _find_low_price_windows(self, buy_prices: List[Dict], hours_ahead: int, price_data: List[Dict] = None) -> List[PriceWindow]:
-        return self._find_price_windows(buy_prices, hours_ahead, 'buy', price_data)
-    
-    def _find_high_price_windows(self, sell_prices: List[Dict], hours_ahead: int, price_data: List[Dict] = None) -> List[PriceWindow]:
-        return self._find_price_windows(sell_prices, hours_ahead, 'sell', price_data)
-    
-    def _create_buy_window(self, window_data: Dict, price_data: List[Dict] = None) -> PriceWindow:
-        duration = (window_data['end'] - window_data['start']).total_seconds() / 3600
-        
-        # Determine urgency based on timing and duration
-        ha_tz = get_ha_timezone()
-        now = datetime.now(ha_tz)
-        time_until_start = (window_data['start'] - now).total_seconds() / 3600
-        
-        if time_until_start <= URGENCY_HIGH_THRESHOLD_HOURS:
-            urgency = 'high'    # Starting soon
-        elif time_until_start <= URGENCY_MEDIUM_THRESHOLD_HOURS:
-            urgency = 'medium'  # Starting in a few hours
-        else:
-            urgency = 'low'     # Starting later
-        
-        # Calculate dynamic confidence based on window quality
-        base_confidence = 0.8
-        confidence = self._calculate_window_confidence(base_confidence, window_data, urgency, duration, price_data)
-        
-        # Create preliminary window to find peak times
-        window = PriceWindow(
-            action='buy',
-            start_time=window_data['start'],
-            end_time=window_data['end'],
-            price=window_data['price'],
-            duration_hours=duration,
-            confidence=confidence,  # Dynamic confidence based on data quality
-            urgency=urgency,
-            peak_times=None  # Will be populated below
-        )
-        
-        # Find peak times within this window if price_data is available
-        if price_data:
-            peak_times = self.find_peak_times_in_window(window, price_data, top_n=PEAK_TIMES_TOP_N)
-            window.peak_times = peak_times
-        else:
-            _LOGGER.warning(f"⚠️ BUY window: price_data отсутствует для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}")
-        
-        return window
-    
-    def _create_sell_window(self, window_data: Dict, price_data: List[Dict] = None) -> PriceWindow:
-        """Create a sell price window."""
-        duration = (window_data['end'] - window_data['start']).total_seconds() / 3600
-        
-        # Determine urgency based on timing and duration
-        ha_tz = get_ha_timezone()
-        now = datetime.now(ha_tz)
-        time_until_start = (window_data['start'] - now).total_seconds() / 3600
-        
-        if time_until_start <= URGENCY_HIGH_THRESHOLD_HOURS:
-            urgency = 'high'    # Starting soon
-        elif time_until_start <= URGENCY_MEDIUM_THRESHOLD_HOURS:
-            urgency = 'medium'  # Starting in a few hours
-        else:
-            urgency = 'low'     # Starting later
-        
-        # Calculate dynamic confidence based on window quality
-        base_confidence = 0.8
-        confidence = self._calculate_window_confidence(base_confidence, window_data, urgency, duration, price_data)
-        
-        # Create preliminary window to find peak times
-        window = PriceWindow(
-            action='sell',
-            start_time=window_data['start'],
-            end_time=window_data['end'],
-            price=window_data['price'],
-            duration_hours=duration,
-            confidence=confidence,  # Dynamic confidence based on data quality
-            urgency=urgency,
-            peak_times=None  # Will be populated below
-        )
-        
-        # Find peak times within this window if price_data is available
-        if price_data:
-            peak_times = self.find_peak_times_in_window(window, price_data, top_n=PEAK_TIMES_TOP_N)
-            window.peak_times = peak_times
-        else:
-            _LOGGER.warning(f"⚠️ SELL window: price_data отсутствует для окна {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}")
-        
-        return window
-    
-    def _calculate_window_confidence(self, base_confidence: float, window_data: Dict, 
-                                    urgency: str, duration_hours: float, 
-                                    price_data: List[Dict] = None) -> float:
-        """Calculate dynamic confidence based on window quality factors."""
-        confidence = base_confidence
-        
-        # Adjust based on urgency (higher urgency = lower confidence due to time pressure)
-        urgency_multipliers = {
-            'high': 0.9,    # High urgency = slightly lower confidence
-            'medium': 1.0,  # Medium urgency = base confidence  
-            'low': 1.1      # Low urgency = higher confidence (more time to plan)
-        }
-        confidence *= urgency_multipliers.get(urgency, 1.0)
-        
-        # Adjust based on window duration (longer windows = higher confidence)
-        if duration_hours >= 4:
-            confidence *= 1.1  # Long windows = higher confidence
-        elif duration_hours <= 1:
-            confidence *= 0.9  # Short windows = lower confidence
-        
-        # Adjust based on data availability
-        if price_data:
-            data_points = len(price_data)
-            if data_points >= 24:  # Full day of data
-                confidence *= 1.05
-            elif data_points < 6:   # Limited data
-                confidence *= 0.85
-        else:
-            confidence *= 0.8  # No peak data available
-        
-        # Time distance factor (closer = higher confidence)
-        if 'start' in window_data:
-            ha_tz = get_ha_timezone()
-            now = datetime.now(ha_tz)
-            hours_until = (window_data['start'] - now).total_seconds() / 3600
-            
-            if hours_until <= 2:    # Very soon
-                confidence *= 1.1
-            elif hours_until >= 24: # Far in future
-                confidence *= 0.9
-        
-        # Clamp between reasonable bounds
-        confidence = max(0.5, min(0.95, confidence))
-        return confidence
-    
-    def find_peak_times_in_window(self, window: PriceWindow, 
-                                  price_data: List[Dict], 
-                                  top_n: int = PEAK_TIMES_TOP_N) -> List[Tuple[datetime, float]]:
-        """Find peak price times within a specific window.
-        
-        For sell windows: finds times with highest prices
-        For buy windows: finds times with lowest prices
-        
-        Args:
-            window: The price window to analyze
-            price_data: List of price data points with 'start' and 'value' keys
-            top_n: Number of top times to return
-            
-        Returns:
-            List of (timestamp, price) tuples sorted by price optimality
-        """
-        if not price_data:
-            return []
-            
-        # Extract times and prices within the window
-        peak_times = []
-        found_in_window = 0
-        total_checked = 0
-        for price_point in price_data:
-            try:
-                total_checked += 1
-                timestamp_str = price_point.get('start', '')
-                price = price_point.get('value', 0)
-                
-                # Parse timestamp
-                timestamp = parse_datetime(timestamp_str)
-                if not timestamp:
+        def _normalize(points: List[Dict]) -> List[tuple[datetime, datetime, float]]:
+            normalized: List[tuple[datetime, datetime, float]] = []
+            for p in points:
+                try:
+                    start = parse_datetime(p.get('start', ''))
+                    end = parse_datetime(p.get('end', '')) if p.get('end') else (start + timedelta(hours=1) if start else None)
+                    value = p.get('value', None)
+                    if not start or end is None or value is None:
+                        continue
+                    # Filter to horizon, include current or future hours
+                    if (end <= now) or (start > horizon):
+                        continue
+                    # Clamp to 1h blocks
+                    duration_h = (end - start).total_seconds() / 3600.0
+                    if duration_h <= 0:
+                        continue
+                    normalized.append((start, end, float(value)))
+                except Exception:
                     continue
-                
-                # Check if timestamp is within window bounds
-                if window.start_time <= timestamp <= window.end_time:
-                    peak_times.append((timestamp, price))
-                    found_in_window += 1
-                    
-            except Exception as e:
-                _LOGGER.debug(f"Error processing price point in window analysis: {e}")
-                continue
-        
-        
-        if not peak_times:
-            return []
-        
-        # Sort by price optimality
-        if window.action == 'sell':
-            # For selling: highest prices first (descending)
-            peak_times.sort(key=lambda x: x[1], reverse=True)
-        else:
-            # For buying: lowest prices first (ascending)  
-            peak_times.sort(key=lambda x: x[1])
-        
-        return peak_times[:top_n]
+            return normalized
+
+        norm_buy = _normalize(buy_prices)
+        norm_sell = _normalize(sell_prices)
+
+        # Select top-N by price with deterministic tiebreaker (earlier start first)
+        norm_sell.sort(key=lambda x: (-x[2], x[0]))
+        norm_buy.sort(key=lambda x: (x[2], x[0]))
+
+        top_sell = norm_sell[: self._top_n_slots]
+        top_buy = norm_buy[: self._top_n_slots]
+
+        def _make_window(action: str, start: datetime, end: datetime, price: float) -> PriceWindow:
+            duration = max(0.0, (end - start).total_seconds() / 3600.0)
+            # Urgency based purely on time distance
+            hours_until = max(0.0, (start - now).total_seconds() / 3600.0)
+            if hours_until <= 1:
+                urgency = 'high'
+            elif hours_until <= 3:
+                urgency = 'medium'
+            else:
+                urgency = 'low'
+            base_conf = 0.85
+            window = PriceWindow(
+                action=action,
+                start_time=start,
+                end_time=end,
+                price=float(price),
+                duration_hours=duration or 1.0,
+                confidence=base_conf,
+                urgency=urgency
+            )
+            return window
+
+        buy_windows = [_make_window('buy', s, e, p) for (s, e, p) in top_buy]
+        sell_windows = [_make_window('sell', s, e, p) for (s, e, p) in top_sell]
+
+        # Deterministic final ordering: earliest start first to aid scheduling
+        all_windows = buy_windows + sell_windows
+        all_windows.sort(key=lambda w: w.start_time)
+
+        return all_windows
     
-    def get_optimal_operation_time(self, window: PriceWindow, 
-                                   price_data: List[Dict],
-                                   operation_duration_hours: float = 1.0) -> Tuple[datetime, float]:
-        """Get the optimal start time for an operation within a window.
-        
-        Args:
-            window: The price window to analyze
-            price_data: List of price data points
-            operation_duration_hours: How long the operation will take
-            
-        Returns:
-            Tuple of (optimal_start_time, expected_price)
-        """
-        peak_times = self.find_peak_times_in_window(window, price_data, top_n=5)
-        
-        if not peak_times:
-            # Fallback to window start
-            return window.start_time, window.price
-            
-        # Find the best time that allows completion within window
-        for optimal_time, price in peak_times:
-            completion_time = optimal_time + timedelta(hours=operation_duration_hours)
-            
-            # Check if operation can complete within window
-            if completion_time <= window.end_time:
-                return optimal_time, price
-        
-        # If no peak time works, use earliest time in window that fits
-        earliest_start = window.end_time - timedelta(hours=operation_duration_hours)
-        if earliest_start >= window.start_time:
-            # Find price at earliest viable start time
-            for timestamp, price in peak_times:
-                if timestamp >= earliest_start:
-                    _LOGGER.info(f"⚡ FALLBACK TIME: {window.action} operation at {timestamp.strftime('%H:%M')} "
-                               f"(price: {price:.4f}, duration: {operation_duration_hours:.1f}h)")
-                    return timestamp, price
-                    
-        # Last resort: use window start
-        _LOGGER.warning(f"⚠️ Using window start time as fallback: {window.start_time.strftime('%H:%M')}")
-        return window.start_time, window.price
+    # Removed legacy quartile-based window detection and peak-time algorithms
+    # The top-3 approach returns one-hour windows already positioned at the hour start.
+    # Keep minimal helpers only.
     
     def plan_battery_operation(self, 
                              target_energy_wh: float, 
@@ -693,11 +416,9 @@ class TimeWindowAnalyzer:
                 target_power_w = min(max_power_w, allocate_wh / max(0.001, window.duration_hours))
                 duration_hours = allocate_wh / max(1.0, target_power_w)
                 
-                # Try to shift to best time inside the window
-                optimal_start, _ = self.get_optimal_operation_time(
-                    window, price_data or [], operation_duration_hours=duration_hours
-                )
-                completion_time = optimal_start + timedelta(hours=duration_hours)
+                # Simplified: operate from window start
+                optimal_start = window.start_time
+                completion_time = window.start_time + timedelta(hours=duration_hours)
                 
                 planned_ops.append(BatteryOperation(
                     action='discharge',
@@ -765,10 +486,9 @@ class TimeWindowAnalyzer:
                 target_power_w = min(max_power_w, allocate_wh / max(0.001, window.duration_hours))
                 duration_hours = allocate_wh / max(1.0, target_power_w)
                 
-                optimal_start, _ = self.get_optimal_operation_time(
-                    window, price_data or [], operation_duration_hours=duration_hours
-                )
-                completion_time = optimal_start + timedelta(hours=duration_hours)
+                # Simplified: operate from window start
+                optimal_start = window.start_time
+                completion_time = window.start_time + timedelta(hours=duration_hours)
                 
                 planned_ops.append(BatteryOperation(
                     action='charge',

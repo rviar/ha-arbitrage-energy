@@ -434,7 +434,7 @@ class ArbitrageOptimizer:
                     min_reserve_percent=current_state.get('min_reserve_percent', 20.0),
                     max_power_w=self.sensor_helper.get_max_battery_power(),
                     price_data=data.get("price_data", {}).get("sell_prices", []),
-                    max_windows=4
+                    max_windows=3
                 )
             except Exception as e:
                 _LOGGER.warning(f"Failed to compute best sell schedule: {e}")
@@ -450,7 +450,7 @@ class ArbitrageOptimizer:
                     current_battery_level_percent=current_state.get('battery_level', 0.0),
                     max_power_w=self.sensor_helper.get_max_battery_power(),
                     price_data=data.get("price_data", {}).get("buy_prices", []),
-                    max_windows=4
+                    max_windows=3
                 )
             except Exception as e:
                 _LOGGER.warning(f"Failed to compute best buy schedule: {e}")

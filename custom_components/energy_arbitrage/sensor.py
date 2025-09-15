@@ -702,35 +702,23 @@ class EnergyArbitragePriceWindowsSensor(EnergyArbitrageBaseSensor):
                 "upcoming_opportunities": price_situation.get('upcoming_opportunities', 0),
                 "time_pressure": price_situation.get('time_pressure', 'low'),
                 
-                # 🚀 NEW: Optimization summary
+                # Simplified top-3 planner summary
                 "buy_windows_count": len(buy_windows),
                 "sell_windows_count": len(sell_windows),
-                "optimization_enabled": True,
-                "timing_analysis_version": "2.0.0"
+                "simplified_planner": True,
+                "timing_analysis_version": "top3-1.0"
             }
-            
-            # Calculate optimization statistics
-            optimized_windows = 0
-            total_price_improvement = 0
-            for window in price_windows:
-                if hasattr(window, 'peak_times') and window.peak_times:
-                    optimized_windows += 1
-                    if window.action == 'buy' and len(window.peak_times) > 0:
-                        # For buying: improvement = how much lower the best price is
-                        best_price = window.peak_times[0][1]
-                        improvement = (window.price - best_price) / window.price
-                        total_price_improvement += improvement
-                    elif window.action == 'sell' and len(window.peak_times) > 0:
-                        # For selling: improvement = how much higher the best price is
-                        best_price = window.peak_times[0][1]
-                        improvement = (best_price - window.price) / window.price
-                        total_price_improvement += improvement
-            
-            attributes.update({
-                "optimized_windows_count": optimized_windows,
-                "optimization_coverage": f"{(optimized_windows / len(price_windows) * 100):.1f}%" if price_windows else "0%",
-                "average_price_improvement": f"{(total_price_improvement / optimized_windows * 100):.1f}%" if optimized_windows > 0 else "0%"
-            })
+
+            # Expose top-3 arrays for easy templating
+            try:
+                attributes.update({
+                    "buy_top3_prices": [round(w.price, 4) for w in buy_windows],
+                    "buy_top3_starts": [w.start_time.isoformat() for w in buy_windows],
+                    "sell_top3_prices": [round(w.price, 4) for w in sell_windows],
+                    "sell_top3_starts": [w.start_time.isoformat() for w in sell_windows],
+                })
+            except Exception:
+                pass
             
             # Current opportunity details
             if price_situation.get('immediate_action'):
@@ -765,26 +753,6 @@ class EnergyArbitragePriceWindowsSensor(EnergyArbitrageBaseSensor):
                 attributes[f"buy_window_{i+1}_price"] = f"{window.price:.4f}"
                 attributes[f"buy_window_{i+1}_urgency"] = window.urgency
                 
-                # 🚀 NEW: Peak times optimization info
-                if hasattr(window, 'peak_times') and window.peak_times:
-                    peak_times = window.peak_times[:3]  # Top 3 peak times
-                    attributes[f"buy_window_{i+1}_peak_count"] = len(peak_times)
-                    
-                    # Best time (lowest price for buying)
-                    best_time, best_price = peak_times[0]
-                    attributes[f"buy_window_{i+1}_best_time"] = best_time.strftime("%H:%M")
-                    attributes[f"buy_window_{i+1}_best_price"] = f"{best_price:.4f}"
-                    attributes[f"buy_window_{i+1}_price_improvement"] = f"{((window.price - best_price) / window.price * 100):.1f}%"
-                    
-                    # All peak times for detailed view
-                    peak_list = []
-                    for peak_time, peak_price in peak_times:
-                        peak_list.append(f"{peak_time.strftime('%H:%M')}={peak_price:.4f}")
-                    attributes[f"buy_window_{i+1}_peak_times"] = ", ".join(peak_list)
-                else:
-                    attributes[f"buy_window_{i+1}_peak_count"] = 0
-                    attributes[f"buy_window_{i+1}_optimization_status"] = "no_peak_data"
-                
                 if window.is_current:
                     attributes[f"buy_window_{i+1}_status"] = "active"
                 elif window.is_upcoming:
@@ -800,26 +768,6 @@ class EnergyArbitragePriceWindowsSensor(EnergyArbitrageBaseSensor):
                 attributes[f"sell_window_{i+1}_duration"] = f"{window.duration_hours:.1f}h"
                 attributes[f"sell_window_{i+1}_price"] = f"{window.price:.4f}"
                 attributes[f"sell_window_{i+1}_urgency"] = window.urgency
-                
-                # 🚀 NEW: Peak times optimization info
-                if hasattr(window, 'peak_times') and window.peak_times:
-                    peak_times = window.peak_times[:3]  # Top 3 peak times
-                    attributes[f"sell_window_{i+1}_peak_count"] = len(peak_times)
-                    
-                    # Best time (highest price for selling)
-                    best_time, best_price = peak_times[0]
-                    attributes[f"sell_window_{i+1}_best_time"] = best_time.strftime("%H:%M")
-                    attributes[f"sell_window_{i+1}_best_price"] = f"{best_price:.4f}"
-                    attributes[f"sell_window_{i+1}_price_improvement"] = f"{((best_price - window.price) / window.price * 100):.1f}%"
-                    
-                    # All peak times for detailed view
-                    peak_list = []
-                    for peak_time, peak_price in peak_times:
-                        peak_list.append(f"{peak_time.strftime('%H:%M')}={peak_price:.4f}")
-                    attributes[f"sell_window_{i+1}_peak_times"] = ", ".join(peak_list)
-                else:
-                    attributes[f"sell_window_{i+1}_peak_count"] = 0
-                    attributes[f"sell_window_{i+1}_optimization_status"] = "no_peak_data"
                 
                 if window.is_current:
                     attributes[f"sell_window_{i+1}_status"] = "active"

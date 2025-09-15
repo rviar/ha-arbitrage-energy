@@ -65,10 +65,8 @@ class TimeCriticalDecisionHandler(DecisionHandler):
     """Handles time-sensitive arbitrage opportunities."""
     
     def can_handle(self, context: DecisionContext) -> bool:
-        return (
-            context.price_situation.get('time_pressure') in ['high', 'medium'] and
-            context.price_situation.get('immediate_action') is not None
-        )
+        # Simplified: act whenever there is an immediate action window, no urgency dependency
+        return context.price_situation.get('immediate_action') is not None
     
     def make_decision(self, context: DecisionContext) -> Optional[DecisionResult]:
         immediate = context.price_situation['immediate_action']
