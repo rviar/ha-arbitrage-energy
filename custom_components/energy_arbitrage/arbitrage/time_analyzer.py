@@ -11,7 +11,8 @@ from .utils import get_current_ha_time, get_ha_timezone, parse_datetime
 from .constants import (
     PRICE_QUARTILE_DIVISOR, PRICE_TOLERANCE_HIGH_MULTIPLIER, PRICE_TOLERANCE_LOW_MULTIPLIER,
     URGENCY_HIGH_THRESHOLD_HOURS, URGENCY_MEDIUM_THRESHOLD_HOURS,
-    PEAK_TIMES_TOP_N, TARGET_ENERGY_ACCEPTABLE_THRESHOLD, SECONDS_PER_HOUR
+    PEAK_TIMES_TOP_N, TARGET_ENERGY_ACCEPTABLE_THRESHOLD, SECONDS_PER_HOUR,
+    TOP_RESULTS_LIMIT
 )
 from .exceptions import safe_execute, log_performance
 
@@ -110,112 +111,73 @@ class TimeWindowAnalyzer:
     
     def _find_price_windows(self, prices: List[Dict], hours_ahead: int, 
                            action_type: str, price_data: List[Dict] = None) -> List[PriceWindow]:
-        """Unified method to find price windows for both buying and selling."""
-        
+        """Select top-2 contiguous windows directly (no quartiles)."""
         if not prices:
             return []
-        
-        # Determine quartile and threshold based on action type
+
         is_buy = action_type == 'buy'
-        
-        if is_buy:
-            # Sort prices to find bottom quartile for buying
-            sorted_prices = sorted(prices, key=lambda p: p.get('value', float('inf')))
-            quartile_size = max(1, len(sorted_prices) // PRICE_QUARTILE_DIVISOR)
-            threshold = sorted_prices[quartile_size - 1].get('value', 0)
-            multiplier = PRICE_TOLERANCE_HIGH_MULTIPLIER  # 1.1 for buy (allow 10% higher)
-        else:
-            # Sort prices to find top quartile for selling
-            sorted_prices = sorted(prices, key=lambda p: p.get('value', 0), reverse=True)
-            quartile_size = max(1, len(sorted_prices) // PRICE_QUARTILE_DIVISOR)
-            threshold = sorted_prices[quartile_size - 1].get('value', float('inf'))
-            multiplier = PRICE_TOLERANCE_LOW_MULTIPLIER   # 0.9 for sell (allow 10% lower)
-                    
-        # Find consecutive price periods that meet criteria
-        windows = []
-        current_window = None
-        # Precompute HA now and horizon once
+
+        # Normalize and filter entries within horizon, keeping the current hour
         ha_tz = get_ha_timezone()
         now = datetime.now(ha_tz)
         horizon = now + timedelta(hours=hours_ahead)
-        
+        entries: List[Tuple[datetime, float]] = []
         for price_point in prices:
             try:
-                price = price_point.get('value', float('inf') if is_buy else 0)
-                timestamp_str = price_point.get('start', '')
-                
-                # Parse timestamp using unified function
-                timestamp = parse_datetime(timestamp_str)
-                if not timestamp:
-                    _LOGGER.warning(f"Failed to parse {action_type} timestamp: {timestamp_str}")
+                ts = parse_datetime(price_point.get('start', ''))
+                if not ts:
                     continue
-                
-                # Skip past prices EXCEPT keep the current hour (include windows that already started)
-                if (timestamp + timedelta(hours=1)) <= now:
+                if (ts + timedelta(hours=1)) <= now:
                     continue
-                
-                # Skip prices too far in future
-                if timestamp > horizon:
+                if ts > horizon:
                     continue
-                
-                # Check if price meets criteria
-                price_meets_criteria = (
-                    price <= threshold * multiplier if is_buy else 
-                    price >= threshold * multiplier
-                )
-                
-                if price_meets_criteria:
-                    if current_window is None:
-                        # Start new window
-                        current_window = {
-                            'start': timestamp,
-                            'end': timestamp + timedelta(hours=1),
-                            'price': price
-                        }
-                    else:
-                        # Extend current window if consecutive
-                        if timestamp <= current_window['end']:
-                            current_window['end'] = timestamp + timedelta(hours=1)
-                            # For buy: take minimum price, for sell: take maximum price
-                            current_window['price'] = (
-                                min(current_window['price'], price) if is_buy else 
-                                max(current_window['price'], price)
-                            )
-                        else:
-                            # Gap found, save current window and start new one
-                            window = (
-                                self._create_buy_window(current_window, price_data) if is_buy else
-                                self._create_sell_window(current_window, price_data)
-                            )
-                            windows.append(window)
-                            
-                            current_window = {
-                                'start': timestamp,
-                                'end': timestamp + timedelta(hours=1),
-                                'price': price
-                            }
-                else:
-                    if current_window:
-                        window = (
-                            self._create_buy_window(current_window, price_data) if is_buy else
-                            self._create_sell_window(current_window, price_data)
-                        )
-                        windows.append(window)
-                    current_window = None
-                    
-            except Exception as e:
-                _LOGGER.debug(f"Error processing price point: {e}")
+                val = float(price_point.get('value', 0.0))
+                entries.append((ts, val))
+            except Exception:
                 continue
-        
-        # Don't forget last window
-        if current_window:
+
+        if not entries:
+            return []
+
+        entries.sort(key=lambda x: x[0])
+
+        # Build contiguous hourly blocks
+        blocks: List[List[Tuple[datetime, float]]] = []
+        current_block: List[Tuple[datetime, float]] = []
+        for ts, val in entries:
+            if not current_block:
+                current_block = [(ts, val)]
+                continue
+            prev_ts = current_block[-1][0]
+            if ts <= prev_ts + timedelta(hours=1):
+                current_block.append((ts, val))
+            else:
+                blocks.append(current_block)
+                current_block = [(ts, val)]
+        if current_block:
+            blocks.append(current_block)
+
+        # Convert blocks to PriceWindow instances
+        windows: List[PriceWindow] = []
+        for block in blocks:
+            start = block[0][0]
+            end = block[-1][0] + timedelta(hours=1)
+            price_vals = [v for _, v in block]
+            window_price = min(price_vals) if is_buy else max(price_vals)
+            window_data = {'start': start, 'end': end, 'price': window_price}
             window = (
-                self._create_buy_window(current_window, price_data) if is_buy else
-                self._create_sell_window(current_window, price_data)
+                self._create_buy_window(window_data, price_data) if is_buy else
+                self._create_sell_window(window_data, price_data)
             )
             windows.append(window)
-        
-        return windows
+
+        # Sort and return top-N
+        if is_buy:
+            windows.sort(key=lambda w: (w.price, w.start_time))
+        else:
+            windows.sort(key=lambda w: (-w.price, w.start_time))
+
+        return windows[:TOP_RESULTS_LIMIT]
 
     def _find_low_price_windows(self, buy_prices: List[Dict], hours_ahead: int, price_data: List[Dict] = None) -> List[PriceWindow]:
         return self._find_price_windows(buy_prices, hours_ahead, 'buy', price_data)
