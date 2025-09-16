@@ -10,8 +10,7 @@ from .predictor import EnergyBalancePredictor
 from .time_analyzer import TimeWindowAnalyzer
 from .decision_handlers import (
     DecisionContext, DecisionResult,
-    TimeCriticalDecisionHandler, 
-    PredictiveDecisionHandler, HoldDecisionHandler
+    TimeCriticalDecisionHandler, HoldDecisionHandler
 )
 from .constants import (
     PRICE_ANALYSIS_24H_WINDOW,
@@ -40,10 +39,9 @@ class ArbitrageOptimizer:
         self._last_analysis = None
         self._last_opportunities: List[Dict[str, Any]] = []
         
-        # Initialize decision handlers in priority order
+        # Initialize decision handlers in priority order (predictive removed)
         self.decision_handlers = [
             TimeCriticalDecisionHandler(self.sensor_helper, self.time_analyzer),  
-            PredictiveDecisionHandler(self.sensor_helper, self.time_analyzer),
             HoldDecisionHandler(self.sensor_helper, self.time_analyzer)
         ]
 

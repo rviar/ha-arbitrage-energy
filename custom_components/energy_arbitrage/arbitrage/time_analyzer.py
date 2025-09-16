@@ -395,21 +395,26 @@ class TimeWindowAnalyzer:
             if not sell_windows or available_battery_wh <= 0 or max_power_w <= 0:
                 return []
             
-            # Sort: best price first, break ties by earlier start
+            # Select top-N by price, then allocate chronologically with reservation for later better windows
             sell_windows.sort(key=lambda w: (-w.price, w.start_time))
             if max_windows and max_windows > 0:
                 sell_windows = sell_windows[:max_windows]
-            
+            # Chronological order for allocation
+            chrono_windows = sorted(sell_windows, key=lambda w: w.start_time)
             remaining_wh = max(0.0, available_battery_wh)
             planned_ops: List[BatteryOperation] = []
-            
-            for window in sell_windows:
+
+            for idx, window in enumerate(chrono_windows):
                 if remaining_wh <= 0:
                     break
                 window_capacity_wh = max_power_w * max(0.0, window.duration_hours)
                 if window_capacity_wh <= 0:
                     continue
-                allocate_wh = min(remaining_wh, window_capacity_wh)
+                # Reserve energy for any future windows with higher prices
+                future_better = [w for w in chrono_windows[idx+1:] if w.price > window.price]
+                reserved_wh = sum(max_power_w * max(0.0, w.duration_hours) for w in future_better)
+                allocatable_wh = max(0.0, remaining_wh - reserved_wh)
+                allocate_wh = min(allocatable_wh, window_capacity_wh)
                 if allocate_wh < 100:  # ignore tiny fragments
                     continue
                 # Compute nominal power and duration in this window
@@ -466,21 +471,25 @@ class TimeWindowAnalyzer:
             if not buy_windows or headroom_wh <= 0 or max_power_w <= 0:
                 return []
             
-            # Sort: lowest price first, then earlier start
+            # Select top-N by lowest price, then allocate chronologically with reservation for later better (lower price) windows
             buy_windows.sort(key=lambda w: (w.price, w.start_time))
             if max_windows and max_windows > 0:
                 buy_windows = buy_windows[:max_windows]
-            
+            chrono_windows = sorted(buy_windows, key=lambda w: w.start_time)
             remaining_wh = max(0.0, headroom_wh)
             planned_ops: List[BatteryOperation] = []
-            
-            for window in buy_windows:
+
+            for idx, window in enumerate(chrono_windows):
                 if remaining_wh <= 0:
                     break
                 window_capacity_wh = max_power_w * max(0.0, window.duration_hours)
                 if window_capacity_wh <= 0:
                     continue
-                allocate_wh = min(remaining_wh, window_capacity_wh)
+                # Reserve headroom for any future windows with lower prices (better)
+                future_better = [w for w in chrono_windows[idx+1:] if w.price < window.price]
+                reserved_wh = sum(max_power_w * max(0.0, w.duration_hours) for w in future_better)
+                allocatable_wh = max(0.0, remaining_wh - reserved_wh)
+                allocate_wh = min(allocatable_wh, window_capacity_wh)
                 if allocate_wh < 100:
                     continue
                 target_power_w = min(max_power_w, allocate_wh / max(0.001, window.duration_hours))

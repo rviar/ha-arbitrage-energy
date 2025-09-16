@@ -55,6 +55,7 @@ def can_buy_now(context: Dict[str, Any]) -> Dict[str, Any]:
     price_situation = analysis.get('price_situation', {})
     current_state = context.get('current_state', {})
     energy_strategy = analysis.get('energy_strategy', {})
+    opportunities = context.get('opportunities', [])
 
     # Ensure there is battery headroom
     battery_level = current_state.get('battery_level', 50.0)
@@ -84,6 +85,13 @@ def can_buy_now(context: Dict[str, Any]) -> Dict[str, Any]:
     immediate = price_situation.get('immediate_action')
     if not immediate or immediate.get('action') != 'buy':
         return {'allowed': False, 'reason': 'no_immediate_buy'}
+
+    # ROI gating: require an ROI-qualified immediate buy opportunity
+    has_immediate_buy = False
+    if opportunities:
+        has_immediate_buy = any(o.get('is_immediate_buy') for o in opportunities)
+    if not has_immediate_buy:
+        return {'allowed': False, 'reason': 'no_immediate_roi_buy'}
 
     return {'allowed': True, 'reason': 'ok'}
 
