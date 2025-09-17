@@ -36,6 +36,7 @@ class ArbitrageOptimizer:
         self.time_analyzer = TimeWindowAnalyzer(self.sensor_helper)
         self._last_plan_update = None
         self._last_trade_ts = {'sell': None, 'buy': None}
+        self._last_action: Optional[str] = None  # 'sell' | 'buy' | None
         self._last_analysis = None
         self._last_opportunities: List[Dict[str, Any]] = []
         
@@ -294,7 +295,8 @@ class ArbitrageOptimizer:
         immediate = analysis_data.get('price_situation', {}).get('immediate_action')
         if immediate and immediate.get('action') in ['sell', 'buy']:
             action = immediate['action']
-            if is_on_cooldown(self._last_trade_ts.get(action), action):
+            # Cooldown blocks only direction switches; continuing the same action is allowed
+            if is_on_cooldown(self._last_trade_ts.get(action), action) and self._last_action != action:
                 return {
                     "action": "hold",
                     "reason": f"Cooldown active for {action}",
@@ -312,7 +314,8 @@ class ArbitrageOptimizer:
                 if decision:
                     # Record cooldown timestamps
                     if decision.action in ['sell_arbitrage', 'charge_arbitrage']:
-                        self._last_trade_ts['sell' if decision.action == 'sell_arbitrage' else 'buy'] = get_current_ha_time().isoformat()
+                        self._last_action = 'sell' if decision.action == 'sell_arbitrage' else 'buy'
+                        self._last_trade_ts[self._last_action] = get_current_ha_time().isoformat()
                     # Centralized debug rationale logging
                     try:
                         self._log_decision_rationale(decision, context, handler.__class__.__name__)
