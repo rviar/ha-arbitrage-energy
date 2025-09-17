@@ -10,9 +10,11 @@ from dataclasses import dataclass
 from .constants import (
     MAX_BATTERY_LEVEL,
     STRATEGIC_CHARGE_LEVEL_ADJUSTMENT,
-    STRATEGIC_DISCHARGE_LEVEL_ADJUSTMENT, MIN_ENERGY_FOR_SELL
+    STRATEGIC_DISCHARGE_LEVEL_ADJUSTMENT, MIN_ENERGY_FOR_SELL,
+    PRICE_COMPARISON_TOLERANCE
 )
 from .policy import can_sell_now, can_buy_now
+from .utils import get_current_ha_time
  
 
 _LOGGER = logging.getLogger(__name__)
@@ -100,8 +102,10 @@ class TimeCriticalDecisionHandler(DecisionHandler):
                 windows = analysis.get('price_windows', []) or []
                 # Find current buy window
                 current_buy_win = next((w for w in windows if getattr(w, 'action', None) == 'buy' and w.is_current), None)
-                # Find best (lowest price) future-or-current buy window
-                future_buy_windows = [w for w in windows if getattr(w, 'action', None) == 'buy' and (w.is_current or w.is_upcoming)]
+                # Find best (lowest price) buy window for TODAY first; fallback to horizon if none
+                now_date = get_current_ha_time().date()
+                todays = [w for w in windows if getattr(w, 'action', None) == 'buy' and (w.is_current or w.is_upcoming) and w.start_time.date() == now_date]
+                future_buy_windows = todays or [w for w in windows if getattr(w, 'action', None) == 'buy' and (w.is_current or w.is_upcoming)]
                 future_buy_windows.sort(key=lambda w: (w.price, w.start_time))
                 best_future_buy = future_buy_windows[0] if future_buy_windows else None
                 # Compute headroom and apply reserve-for-top1 logic
@@ -109,7 +113,8 @@ class TimeCriticalDecisionHandler(DecisionHandler):
                 current_wh = (battery_level / 100.0) * battery_capacity
                 headroom_wh = max(0.0, battery_capacity - current_wh)
 
-                if current_buy_win and best_future_buy and current_buy_win.start_time == best_future_buy.start_time:
+                # Determine if current is effectively top-1 (within tolerance)
+                if current_buy_win and best_future_buy and (best_future_buy.price <= current_buy_win.price + PRICE_COMPARISON_TOLERANCE):
                     # Current is top-1 → use full 1h capacity
                     charge_power = min(context.max_battery_power, headroom_wh)
                     if charge_power >= 100:
@@ -155,11 +160,14 @@ class TimeCriticalDecisionHandler(DecisionHandler):
                 windows = analysis.get('price_windows', []) or []
                 # Find current sell window
                 current_sell_win = next((w for w in windows if getattr(w, 'action', None) == 'sell' and w.is_current), None)
-                # Find best (highest price) future-or-current sell window
-                future_sell_windows = [w for w in windows if getattr(w, 'action', None) == 'sell' and (w.is_current or w.is_upcoming)]
+                # Find best (highest price) sell window for TODAY first; fallback to horizon if none
+                now_date = get_current_ha_time().date()
+                todays = [w for w in windows if getattr(w, 'action', None) == 'sell' and (w.is_current or w.is_upcoming) and w.start_time.date() == now_date]
+                future_sell_windows = todays or [w for w in windows if getattr(w, 'action', None) == 'sell' and (w.is_current or w.is_upcoming)]
                 future_sell_windows.sort(key=lambda w: (-w.price, w.start_time))
                 best_future_sell = future_sell_windows[0] if future_sell_windows else None
-                if current_sell_win and best_future_sell and current_sell_win.start_time == best_future_sell.start_time:
+                # Determine if current is effectively top-1 (within tolerance)
+                if current_sell_win and best_future_sell and (best_future_sell.price <= current_sell_win.price + PRICE_COMPARISON_TOLERANCE):
                     # Current is top-1 → use full 1h capacity
                     discharge_power = min(context.max_battery_power, available_battery)
                     if discharge_power >= 100:
