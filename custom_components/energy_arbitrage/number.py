@@ -27,6 +27,8 @@ from .const import (
     DEFAULT_MAX_BATTERY_POWER,
     DEFAULT_BATTERY_CAPACITY,
     DEFAULT_MIN_ARBITRAGE_DEPTH,
+    CONF_EXECUTOR_COOLDOWN_SECONDS,
+    DEFAULT_EXECUTOR_COOLDOWN_SECONDS,
 )
 from .coordinator import EnergyArbitrageCoordinator
 
@@ -48,6 +50,7 @@ async def async_setup_entry(
         EnergyArbitrageMaxBatteryPowerNumber(coordinator, entry),
         EnergyArbitrageBatteryCapacityNumber(coordinator, entry),
         EnergyArbitrageMinArbitrageDepthNumber(coordinator, entry),
+        EnergyArbitrageExecutorCooldownNumber(coordinator, entry),
     ]
 
     async_add_entities(entities)
@@ -229,3 +232,21 @@ class EnergyArbitrageMinArbitrageDepthNumber(EnergyArbitrageBaseNumber):
         config = self._entry.data
         options = self._entry.options
         return int(options.get(self._config_key, config.get(self._config_key, DEFAULT_MIN_ARBITRAGE_DEPTH)))
+
+
+class EnergyArbitrageExecutorCooldownNumber(EnergyArbitrageBaseNumber):
+    def __init__(self, coordinator: EnergyArbitrageCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, CONF_EXECUTOR_COOLDOWN_SECONDS)
+        self._attr_name = "Executor Cooldown"
+        self._attr_icon = "mdi:timer-outline"
+        self._attr_native_min_value = 0
+        self._attr_native_max_value = 120
+        self._attr_native_step = 1
+        self._attr_native_unit_of_measurement = "s"
+        self._attr_mode = NumberMode.BOX
+
+    @property
+    def native_value(self) -> int:
+        config = self._entry.data
+        options = self._entry.options
+        return int(options.get(self._config_key, config.get(self._config_key, DEFAULT_EXECUTOR_COOLDOWN_SECONDS)))

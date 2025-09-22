@@ -10,13 +10,18 @@ class ArbitrageExecutor:
     def __init__(self, coordinator):
         self.coordinator = coordinator
         self._last_action_time = None
-        self._action_cooldown_seconds = 300
+        # Default; will be overridden by number entity if present
+        try:
+            self._action_cooldown_seconds = int(coordinator.options.get('executor_cooldown_seconds', coordinator.config.get('executor_cooldown_seconds', 15)))
+        except Exception:
+            self._action_cooldown_seconds = 15
+        self._last_action_type: str | None = None  # 'sell_arbitrage' | 'charge_arbitrage'
 
     async def execute_decision(self, decision: Dict[str, Any]) -> bool:
         action = decision.get('action', 'hold')
         
         # Allow 'hold' to always pass through to enforce safe idle state
-        if action != 'hold' and not self._can_execute_action():
+        if action != 'hold' and not self._can_execute_action(action):
             _LOGGER.debug("Action execution skipped due to cooldown")
             return False
         
@@ -36,7 +41,7 @@ class ArbitrageExecutor:
             if success:
                 # Do not set cooldown for 'hold' to avoid delaying next real action
                 if action != 'hold':
-                    self._update_last_action_time()
+                    self._update_last_action_time(action)
                 _LOGGER.info(f"Successfully executed action: {action}")
             else:
                 _LOGGER.error(f"Failed to execute action: {action}")
@@ -410,14 +415,17 @@ class ArbitrageExecutor:
             _LOGGER.error(f"Error stopping force charge: {e}")
             return False
 
-    def _can_execute_action(self) -> bool:
+    def _can_execute_action(self, action: str) -> bool:
+        # Always allow if switching to a different action (policy already guards flips)
+        if self._last_action_type is None or self._last_action_type != action:
+            return True
         if self._last_action_time is None:
             return True
-        
         import time
         current_time = time.time()
         return (current_time - self._last_action_time) >= self._action_cooldown_seconds
 
-    def _update_last_action_time(self):
+    def _update_last_action_time(self, action: str):
         import time
         self._last_action_time = time.time()
+        self._last_action_type = action

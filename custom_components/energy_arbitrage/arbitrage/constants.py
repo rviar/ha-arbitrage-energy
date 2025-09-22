@@ -74,7 +74,6 @@ PRICE_COMPARISON_TOLERANCE = 0.001  # Tolerance for price equality comparison
 # Time Approximations (hours)
 FUTURE_BUY_TIME_OFFSET = 12  # Hours offset for future buy time approximation
 FUTURE_SELL_TIME_OFFSET = 18  # Hours offset for future sell time approximation
-NEAR_TERM_REBUY_LOOKAHEAD_HOURS = 8  # Lookahead window for sell-now, rebuy-soon analysis
 
 # Battery Specifications (defaults)
 DEFAULT_BATTERY_COST = 7500  # Default battery cost in currency units
@@ -85,4 +84,3 @@ DEFAULT_DEGRADATION_FACTOR = 1.0  # Default battery degradation factor
 
 # Fallback Values
 FALLBACK_BATTERY_LEVEL_PERCENT = 50.0  # Fallback battery level when sensors fail
-FALLBACK_CONFIDENCE_LEVEL = 0.3  # Fallback confidence for error conditions

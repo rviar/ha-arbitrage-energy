@@ -18,7 +18,6 @@ from .constants import (
     FUTURE_BUY_TIME_OFFSET, FUTURE_SELL_TIME_OFFSET,
     DEFAULT_BATTERY_COST, DEFAULT_BATTERY_CYCLES, DEFAULT_DEGRADATION_FACTOR,
     FALLBACK_BATTERY_LEVEL_PERCENT,
-    FALLBACK_CONFIDENCE_LEVEL, NEAR_TERM_REBUY_LOOKAHEAD_HOURS
 )
 from .utils import (
     calculate_available_battery_capacity, 
@@ -423,7 +422,8 @@ class ArbitrageOptimizer:
         
         # 🕐 TIME WINDOW ANALYSIS  
         try:
-            price_windows = self.time_analyzer.analyze_price_windows(data.get("price_data", {}), PRICE_ANALYSIS_24H_WINDOW)
+            planning_horizon = data.get("planning_horizon", PRICE_ANALYSIS_24H_WINDOW)
+            price_windows = self.time_analyzer.analyze_price_windows(data.get("price_data", {}), planning_horizon)
             price_situation = self.time_analyzer.get_current_price_situation(price_windows)
             # 🏆 BEST-OF-BEST SELL SCHEDULE
             try:
@@ -473,7 +473,7 @@ class ArbitrageOptimizer:
         
         # 📉 NEAR-TERM REBUY ANALYSIS (sell-now, rebuy-soon)
         near_term_rebuy = {
-            'lookahead_hours': NEAR_TERM_REBUY_LOOKAHEAD_HOURS,
+            'lookahead_hours': data.get("planning_horizon", PRICE_ANALYSIS_24H_WINDOW),
             'min_upcoming_buy': None,
             'current_sell_price': None,
             'roi_percent': 0.0,
@@ -486,7 +486,7 @@ class ArbitrageOptimizer:
             if price_windows:
                 # Use HA time for filtering windows
                 ha_now = get_current_ha_time()
-                horizon = ha_now + timedelta(hours=NEAR_TERM_REBUY_LOOKAHEAD_HOURS)
+                horizon = ha_now + timedelta(hours=near_term_rebuy['lookahead_hours'])
                 upcoming_buy_prices = [
                     w.price for w in price_windows
                     if w.action == 'buy' and w.start_time <= horizon
